@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import ast  # To convert string representation of list to actual list
+import subprocess
 
 
 def read_keypoints(file_path):
@@ -90,6 +91,8 @@ def blur_face_circle(frame, keypoints_list):
                 y_max = int(max(visible_face_keypoints[:, 1]))
                 center = ((x_min + x_max) // 2, (y_min + y_max) // 2)
                 radius = max(x_max - x_min, y_max - y_min)
+                if radius <= 50:
+                    radius = 90
             else:
                 # Use a default radius for the blur area when only one keypoint is available
                 default_radius = 100  # Adjust as needed
@@ -119,12 +122,16 @@ def join_frames(frames, width, height, frame_rate, output_path):
     out.release()
 
 
+def merge_audio(video_path, audio_path, output_path):
+    cmd = ['ffmpeg', '-i', video_path, '-i', audio_path, '-c:v',
+           'copy', '-c:a', 'aac', '-strict', 'experimental', output_path]
+    subprocess.run(cmd)
+
+
 # Path to Keypoints and Video
-keypoints_file_path = '/Users/mopidevi/Workspace/projects/video-deid/keypoints_xy.txt'
 video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
-# output_path = '/Users/mopidevi/Workspace/projects/video-deid/deid.mp4'
-output_path = '/Users/mopidevi/Workspace/projects/video-deid/deid-cir.mp4'
-# output_path = '/Users/mopidevi/Workspace/projects/video-deid/debug.mp4'
+keypoints_file_path = '/Users/mopidevi/Workspace/projects/video-deid/models/yolov8m-pose/keypoints_xy.txt'
+output_path = '/Users/mopidevi/Workspace/projects/video-deid/models/yolov8m-pose/deid-cir-yolov8m-pose.mp4'
 
 video_keypoints = read_keypoints(keypoints_file_path)
 video_frames, width, height, frame_rate = load_video(video_path)
@@ -136,4 +143,8 @@ if len(video_keypoints) == len(video_frames):
         processed_frame = blur_face_circle(
             video_frames[idx], video_keypoints[idx])
         processed_frames.append(processed_frame)
-    join_frames(processed_frames, width, height, frame_rate, output_path)
+
+    subprocess.run(['ffmpeg', '-i', video_path, '-q:a',
+                   '0', '-map', 'a', 'original-audio.mp3'])
+    join_frames(processed_frames, width, height, frame_rate, 'video-deid.mp4')
+    merge_audio('video-deid.mp4', 'original-audio.mp3', output_path)
