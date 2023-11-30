@@ -89,10 +89,10 @@ def blur_face_circle(frame, keypoints_list):
                 x_max = int(max(visible_face_keypoints[:, 0]))
                 y_max = int(max(visible_face_keypoints[:, 1]))
                 center = ((x_min + x_max) // 2, (y_min + y_max) // 2)
-                radius = max(x_max - x_min, y_max - y_min) // 2
+                radius = max(x_max - x_min, y_max - y_min)
             else:
                 # Use a default radius for the blur area when only one keypoint is available
-                default_radius = 50  # Adjust as needed
+                default_radius = 100  # Adjust as needed
                 kp = visible_face_keypoints[0]
                 center = (int(kp[0]), int(kp[1]))
                 radius = default_radius
