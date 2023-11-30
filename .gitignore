@@ -1,4 +1,7 @@
+*.mp3
 *.mp4
 *.avi
 *.txt
 *.jpg
+models
+.DS_Store
