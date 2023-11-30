@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import ast  # To convert string representation of list to actual list
+import subprocess
 
 
 def read_keypoints(file_path):
@@ -28,31 +29,84 @@ def load_video(file_path):
     return frames, width, height, frame_rate
 
 
-def blur_face(frame, keypoints):
-    if len(keypoints) == 17:
-        # Modify this based on actual face keypoints
-        face_keypoints = np.array(keypoints[:5])
+def blur_face_rectangle(frame, keypoints_list):
+    if len(keypoints_list) == 17:
+        persons_keypoints = [keypoints_list]
+    else:
+        persons_keypoints = keypoints_list
+
+    for keypoints in persons_keypoints:
+        face_keypoints = [kp for kp in keypoints[:5]
+                          if isinstance(kp, list) and len(kp) == 2]
         filtered_keypoints = [kp for kp in face_keypoints if not (
             kp[0] == 0.0 and kp[1] == 0.0)]
-        visible_face_keypoints = np.array(filtered_keypoints)
 
-        # Compute the bounding box for the face
-        x_min = int(min(visible_face_keypoints[:, 0]))
-        y_min = int(min(visible_face_keypoints[:, 1]))
-        x_max = int(max(visible_face_keypoints[:, 0]))
-        y_max = int(max(visible_face_keypoints[:, 1]))
+        if filtered_keypoints:
+            visible_face_keypoints = np.array(filtered_keypoints)
 
-        # Ensure bounding box is within frame
-        x_min, y_min = max(0, x_min), max(0, y_min)
-        x_max, y_max = min(frame.shape[1], x_max), min(frame.shape[0], y_max)
+            if len(filtered_keypoints) >= 2:
+                # Calculate bounding box for multiple keypoints
+                x_min = int(min(visible_face_keypoints[:, 0]))
+                y_min = int(min(visible_face_keypoints[:, 1]))
+                x_max = int(max(visible_face_keypoints[:, 0]))
+                y_max = int(max(visible_face_keypoints[:, 1]))
+            else:
+                # Use a default size for the blur area when only one keypoint is available
+                default_size = 100  # This can be adjusted
+                kp = visible_face_keypoints[0]
+                x_min = max(0, int(kp[0] - default_size / 2))
+                y_min = max(0, int(kp[1] - default_size / 2))
+                x_max = min(frame.shape[1], int(kp[0] + default_size / 2))
+                y_max = min(frame.shape[0], int(kp[1] + default_size / 2))
 
-        # Blur the face region
-        face_region = frame[y_min:y_max, x_min:x_max]
-        if face_region.size > 0:    
-            blurred_face = cv2.GaussianBlur(face_region, (99, 99), 30)
-            frame[y_min:y_max, x_min:x_max] = blurred_face
-            # Uncomment for debug
-            # frame = cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            face_region = frame[y_min:y_max, x_min:x_max]
+            if face_region.size > 0:
+                blurred_face = cv2.GaussianBlur(face_region, (99, 99), 30)
+                frame[y_min:y_max, x_min:x_max] = blurred_face
+
+    return frame
+
+
+def blur_face_circle(frame, keypoints_list):
+    if len(keypoints_list) == 17:
+        persons_keypoints = [keypoints_list]
+    else:
+        persons_keypoints = keypoints_list
+
+    for keypoints in persons_keypoints:
+        face_keypoints = [kp for kp in keypoints[:5]
+                          if isinstance(kp, list) and len(kp) == 2]
+        filtered_keypoints = [kp for kp in face_keypoints if not (
+            kp[0] == 0.0 and kp[1] == 0.0)]
+
+        if filtered_keypoints:
+            visible_face_keypoints = np.array(filtered_keypoints)
+            center = None
+            radius = None
+
+            if len(filtered_keypoints) >= 2:
+                x_min = int(min(visible_face_keypoints[:, 0]))
+                y_min = int(min(visible_face_keypoints[:, 1]))
+                x_max = int(max(visible_face_keypoints[:, 0]))
+                y_max = int(max(visible_face_keypoints[:, 1]))
+                center = ((x_min + x_max) // 2, (y_min + y_max) // 2)
+                radius = max(x_max - x_min, y_max - y_min)
+                if radius <= 50:
+                    radius = 90
+            else:
+                # Use a default radius for the blur area when only one keypoint is available
+                default_radius = 100  # Adjust as needed
+                kp = visible_face_keypoints[0]
+                center = (int(kp[0]), int(kp[1]))
+                radius = default_radius
+
+            # Create a mask for the circular region
+            mask = np.zeros(frame.shape[:2], dtype="uint8")
+            cv2.circle(mask, center, radius, 255, -1)
+
+            # Blur the entire frame and mask the circular region
+            blurred_frame = cv2.GaussianBlur(frame, (99, 99), 30)
+            frame = np.where(mask[:, :, None] == 255, blurred_frame, frame)
 
     return frame
 
@@ -68,11 +122,16 @@ def join_frames(frames, width, height, frame_rate, output_path):
     out.release()
 
 
+def merge_audio(video_path, audio_path, output_path):
+    cmd = ['ffmpeg', '-i', video_path, '-i', audio_path, '-c:v',
+           'copy', '-c:a', 'aac', '-strict', 'experimental', output_path]
+    subprocess.run(cmd)
+
+
 # Path to Keypoints and Video
-keypoints_file_path = '/Users/mopidevi/Workspace/projects/yolo8/predict/keypoints_xy.txt'
-video_path = '/Users/mopidevi/Workspace/projects/yolo8/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
-output_path = '/Users/mopidevi/Workspace/projects/yolo8/deid.mp4'
-# output_path = '/Users/mopidevi/Workspace/projects/yolo8/debug.mp4'
+video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
+keypoints_file_path = '/Users/mopidevi/Workspace/projects/video-deid/models/yolov8m-pose/keypoints_xy.txt'
+output_path = '/Users/mopidevi/Workspace/projects/video-deid/models/yolov8m-pose/deid-cir-yolov8m-pose.mp4'
 
 video_keypoints = read_keypoints(keypoints_file_path)
 video_frames, width, height, frame_rate = load_video(video_path)
@@ -81,6 +140,11 @@ video_frames, width, height, frame_rate = load_video(video_path)
 if len(video_keypoints) == len(video_frames):
     processed_frames = []
     for idx in range(len(video_keypoints)):
-        processed_frame = blur_face(video_frames[idx], video_keypoints[idx])
+        processed_frame = blur_face_circle(
+            video_frames[idx], video_keypoints[idx])
         processed_frames.append(processed_frame)
-    join_frames(processed_frames, width, height, frame_rate, output_path)
+
+    subprocess.run(['ffmpeg', '-i', video_path, '-q:a',
+                   '0', '-map', 'a', 'original-audio.mp3'])
+    join_frames(processed_frames, width, height, frame_rate, 'video-deid.mp4')
+    merge_audio('video-deid.mp4', 'original-audio.mp3', output_path)
