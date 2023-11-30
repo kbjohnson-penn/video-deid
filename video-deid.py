@@ -28,31 +28,42 @@ def load_video(file_path):
     return frames, width, height, frame_rate
 
 
-def blur_face(frame, keypoints):
-    if len(keypoints) == 17:
-        # Modify this based on actual face keypoints
-        face_keypoints = np.array(keypoints[:5])
+def blur_face(frame, keypoints_list):
+    if len(keypoints_list) == 17:
+        # Single list: one person
+        persons_keypoints = [keypoints_list]
+    else:
+        # Multiple people
+        persons_keypoints = keypoints_list
+
+    for keypoints in persons_keypoints:
+        # Extract the first 5 keypoints which belong to the face
+        face_keypoints = [kp for kp in keypoints[:5]
+                          if isinstance(kp, list) and len(kp) == 2]
+
+        # Filter out [0.0, 0.0] keypoints
         filtered_keypoints = [kp for kp in face_keypoints if not (
             kp[0] == 0.0 and kp[1] == 0.0)]
-        visible_face_keypoints = np.array(filtered_keypoints)
 
-        # Compute the bounding box for the face
-        x_min = int(min(visible_face_keypoints[:, 0]))
-        y_min = int(min(visible_face_keypoints[:, 1]))
-        x_max = int(max(visible_face_keypoints[:, 0]))
-        y_max = int(max(visible_face_keypoints[:, 1]))
+        # Proceed if there are at least 4 valid keypoints
+        if len(filtered_keypoints) >= 2:
+            visible_face_keypoints = np.array(filtered_keypoints)
 
-        # Ensure bounding box is within frame
-        x_min, y_min = max(0, x_min), max(0, y_min)
-        x_max, y_max = min(frame.shape[1], x_max), min(frame.shape[0], y_max)
+            x_min = int(min(visible_face_keypoints[:, 0]))
+            y_min = int(min(visible_face_keypoints[:, 1]))
+            x_max = int(max(visible_face_keypoints[:, 0]))
+            y_max = int(max(visible_face_keypoints[:, 1]))
 
-        # Blur the face region
-        face_region = frame[y_min:y_max, x_min:x_max]
-        if face_region.size > 0:    
-            blurred_face = cv2.GaussianBlur(face_region, (99, 99), 30)
-            frame[y_min:y_max, x_min:x_max] = blurred_face
-            # Uncomment for debug
-            # frame = cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            x_min, y_min = max(0, x_min), max(0, y_min)
+            x_max, y_max = min(frame.shape[1], x_max), min(
+                frame.shape[0], y_max)
+
+            face_region = frame[y_min:y_max, x_min:x_max]
+            if face_region.size > 0:
+                blurred_face = cv2.GaussianBlur(face_region, (99, 99), 30)
+                frame[y_min:y_max, x_min:x_max] = blurred_face
+                # Uncomment for debug
+                # frame = cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
 
     return frame
 
@@ -69,10 +80,10 @@ def join_frames(frames, width, height, frame_rate, output_path):
 
 
 # Path to Keypoints and Video
-keypoints_file_path = '/Users/mopidevi/Workspace/projects/yolo8/predict/keypoints_xy.txt'
-video_path = '/Users/mopidevi/Workspace/projects/yolo8/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
-output_path = '/Users/mopidevi/Workspace/projects/yolo8/deid.mp4'
-# output_path = '/Users/mopidevi/Workspace/projects/yolo8/debug.mp4'
+keypoints_file_path = '/Users/mopidevi/Workspace/projects/video-deid/keypoints_xy.txt'
+video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
+output_path = '/Users/mopidevi/Workspace/projects/video-deid/deid.mp4'
+# output_path = '/Users/mopidevi/Workspace/projects/video-deid/debug.mp4'
 
 video_keypoints = read_keypoints(keypoints_file_path)
 video_frames, width, height, frame_rate = load_video(video_path)
