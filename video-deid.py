@@ -76,7 +76,7 @@ def process_video(video_path, keypoints_file_path, output_path):
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+        frame_rate = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -85,6 +85,7 @@ def process_video(video_path, keypoints_file_path, output_path):
         keypoints_generator = read_keypoints(keypoints_file_path)
         frame_count = 0
         update_interval = 100  # Adjust as needed
+        last_keypoints = None  # Store the last known keypoints
 
         while True:
             ret, frame = cap.read()
@@ -99,18 +100,23 @@ def process_video(video_path, keypoints_file_path, output_path):
                     f"Processing frame {frame_count}/{total_frames} ({percentage:.2f}%)")
 
             try:
-                keypoints = next(keypoints_generator)
-            except StopIteration:
-                logging.info("No more keypoints available.")
-                break
+                keypoints = next(keypoints_generator, None)
+                if keypoints is None:
+                    keypoints = last_keypoints  # Use the last known keypoints if current are missing
+                    if keypoints is None:
+                        logging.warning(
+                            f"No keypoints available for frame {frame_count}, skipping.")
+                        continue
             except Exception as e:
                 logging.error(
                     f"Error processing keypoints for frame {frame_count}: {e}")
                 break
 
             try:
-                processed_frame = blur_face_circle(frame, keypoints)
-                out.write(processed_frame)
+                if keypoints:
+                    processed_frame = blur_face_circle(frame, keypoints)
+                    out.write(processed_frame)
+                    last_keypoints = keypoints
             except Exception as e:
                 logging.error(
                     f"Error applying blur to frame {frame_count}: {e}")
@@ -129,8 +135,8 @@ def process_video(video_path, keypoints_file_path, output_path):
 
 
 # Usage
-video_path = '/Users/mopidevi/Downloads/CSI_3.10.18_Sweeney_03.mp4'
-keypoints_file_path = '/Users/mopidevi/Workspace/projects/video-deid/keypoints_xy.txt'
-output_path = '/Users/mopidevi/Workspace/projects/video-deid/output_1.mp4'
+video_path = 'CSI_3.10.18_Sweeney_03.mp4'
+keypoints_file_path = 'keypoints_xy.txt'
+output_path = 'output_1.mp4'
 
 process_video(video_path, keypoints_file_path, output_path)
