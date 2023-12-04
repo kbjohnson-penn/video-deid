@@ -1,3 +1,4 @@
+import sys
 import cv2
 import numpy as np
 import ast
@@ -66,7 +67,7 @@ def blur_face_circle(frame, keypoints_list):
     return frame
 
 
-def process_video(video_path, keypoints_file_path, output_path):
+def process_video(video_path, keypoints_file_path):
     logging.info(f"Starting video processing for {video_path}")
 
     try:
@@ -81,7 +82,8 @@ def process_video(video_path, keypoints_file_path, output_path):
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, frame_rate, (width, height))
+        out = cv2.VideoWriter("processed_temp.mp4", fourcc,
+                              frame_rate, (width, height))
 
         keypoints_generator = read_keypoints(keypoints_file_path)
         frame_count = 0
@@ -132,7 +134,8 @@ def process_video(video_path, keypoints_file_path, output_path):
             out.release()
         logging.info("Released video resources.")
 
-    logging.info(f"Video processing completed. Output saved to {output_path}")
+    logging.info(
+        f"Video processing completed. Output saved to processed_temp.mp4")
 
 
 def combine_audio_video(audio_path, video_path, output_path):
@@ -146,14 +149,24 @@ def combine_audio_video(audio_path, video_path, output_path):
         logging.error(f"Error combining audio and video: {e}")
 
 
-# Usage
-video_path = 'CSI_3.10.18_Sweeney_03.mp4'
-keypoints_file_path = 'keypoints_xy.txt'
-processed_video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_3.10.18_Sweeney_03_processed.mp4'
-processed_audio_path = '/Users/mopidevi/Workspace/projects/video-deid/processed_Sweeny_03_audio.mp3'
-final_processed_video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_3.10.18_Sweeney_03-deid.mp4'
+def main():
+    video_path = sys.argv[1]
+    keypoints_file_path = sys.argv[2]
+    processed_audio_path = sys.argv[3]
+    final_processed_video_path = sys.argv[4]
+
+    process_video(video_path, keypoints_file_path)
+    combine_audio_video(processed_audio_path,
+                        "processed_temp.mp4", final_processed_video_path)
 
 
-process_video(video_path, keypoints_file_path, processed_video_path)
-combine_audio_video(processed_audio_path,
-                    processed_video_path, final_processed_video_path)
+if __name__ == "__main__":
+    # Ensure the correct number of arguments are provided
+    num_args = len(sys.argv) - 1
+    if num_args != 4:
+        print("Usage: python video-deid.py <original_video_path> <video_keypoints.txt> <processed_audio_path> <output_video_path>")
+        sys.exit(1)
+
+    # Execute the main function
+    main()
+    sys.exit(0)
