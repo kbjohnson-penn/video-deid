@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import ast
 import logging
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -134,9 +135,25 @@ def process_video(video_path, keypoints_file_path, output_path):
     logging.info(f"Video processing completed. Output saved to {output_path}")
 
 
+def combine_audio_video(audio_path, video_path, output_path):
+    try:
+        video_clip = VideoFileClip(video_path)
+        audio_clip = AudioFileClip(audio_path)
+        video_clip_with_audio = video_clip.set_audio(audio_clip)
+        video_clip_with_audio.write_videofile(output_path, codec="libx264")
+        logging.info(f"Combined video and audio saved to {output_path}")
+    except Exception as e:
+        logging.error(f"Error combining audio and video: {e}")
+
+
 # Usage
 video_path = 'CSI_3.10.18_Sweeney_03.mp4'
 keypoints_file_path = 'keypoints_xy.txt'
-output_path = 'output_1.mp4'
+processed_video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_3.10.18_Sweeney_03_processed.mp4'
+processed_audio_path = '/Users/mopidevi/Workspace/projects/video-deid/processed_Sweeny_03_audio.mp3'
+final_processed_video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_3.10.18_Sweeney_03-deid.mp4'
 
-process_video(video_path, keypoints_file_path, output_path)
+
+process_video(video_path, keypoints_file_path, processed_video_path)
+combine_audio_video(processed_audio_path,
+                    processed_video_path, final_processed_video_path)
