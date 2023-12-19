@@ -3,10 +3,8 @@ import numpy as np
 import os
 import logging
 from collections import defaultdict, deque
-
-# Configure logging
-logging.basicConfig(filename='video_processing.log', level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+from moviepy.editor import VideoFileClip, AudioFileClip
+import argparse
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -42,7 +40,7 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
 
 
 # Define a dictionary to store the bounding boxes of the previous frames for each person
-previous_bboxes = defaultdict(lambda: deque(maxlen=10))
+previous_bboxes = defaultdict(lambda: deque(maxlen=5))
 
 
 def process_keypoints_and_blur_faces(frame, keypoints, person_id):
@@ -103,9 +101,9 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
     return frame
 
 
-def main(video_path, keypoints_dir, output_path):
+def process_video(video_path, keypoints_dir, output_path):
     """
-    Main function to process the video and apply blur to faces.
+    Process the video and apply blur to faces.
 
     Parameters:
     video_path (str): Path to the input video.
@@ -182,10 +180,67 @@ def main(video_path, keypoints_dir, output_path):
     cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
-    video_path = '/Users/mopidevi/Workspace/projects/video-deid/CSI_03.02.18_Trexler_01_TRIMMED.mp4'
-    keypoints_dir = '/Users/mopidevi/Workspace/projects/video-deid/labels'
-    output_path = '/Users/mopidevi/Workspace/projects/video-deid/output.mp4'
+def combine_audio_video(audio_path, video_path, output_path):
+    """
+    Combines the audio from one file with the video from another file.
 
-    # Call the main function
-    main(video_path, keypoints_dir, output_path)
+    Parameters:
+    audio_path (str): Path to the audio file.
+    video_path (str): Path to the video file.
+    output_path (str): Path to the output file.
+    """
+    try:
+        # Load the video file
+        video_clip = VideoFileClip(video_path)
+        # Load the audio file
+        audio_clip = AudioFileClip(audio_path)
+        # Set the audio of the video clip to the audio clip
+        video_clip_with_audio = video_clip.set_audio(audio_clip)
+        # Write the video clip with audio to the output file
+        video_clip_with_audio.write_videofile(output_path, codec="libx264")
+        # Log a message indicating that the combined video and audio was saved
+        logging.info(f"Combined video and audio saved to {output_path}")
+    except Exception as e:
+        # Log an error message if an exception occurred
+        logging.error(f"Error combining audio and video: {e}")
+
+
+def setup_logging(log_file=None):
+    # Set up logging
+    log_format = '%(asctime)s - %(levelname)s - %(message)s'
+    if log_file:
+        logging.basicConfig(filename=log_file,
+                            level=logging.INFO, format=log_format)
+    else:
+        logging.basicConfig(level=logging.INFO, format=log_format)
+
+
+def main():
+    # Create an argument parser
+    parser = argparse.ArgumentParser(
+        description='Process video and apply blur to faces.')
+    parser.add_argument('--video', required=True,
+                        help='Path to the input video.')
+    parser.add_argument('--keypoints', required=True,
+                        help='Directory containing keypoints.')
+#    parser.add_argument('--audio', required=True,
+#                        help='Path to the audio file.')
+    parser.add_argument('--output', required=True,
+                        help='Path to the output video.')
+    parser.add_argument('--log', help='Path to the log file.')
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Set up logging
+    setup_logging(args.log)
+
+    # Process the video
+    process_video(args.video, args.keypoints, args.output)
+
+    # Combine the processed video with the audio
+#    combine_audio_video(args.audio, args.output, args.output)
+
+
+if __name__ == '__main__':
+    main()
