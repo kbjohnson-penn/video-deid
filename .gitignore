@@ -5,3 +5,4 @@
 *.jpg
 models
 .DS_Store
+*.log
