@@ -7,6 +7,9 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 import argparse
 from tqdm import tqdm
 
+# Define the output directory for the frames
+output_dir = "/Users/mopidevi/Workspace/projects/video-deid/frames"
+
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     """
@@ -41,6 +44,18 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
 
 
 def scale_keypoints(keypoints, width, height):
+    """
+    Scales keypoints to the frame dimensions.
+
+    Parameters:
+    keypoints (list): The keypoints to scale.
+    width (int): The width of the frame.
+    height (int): The height of the frame.
+
+    Returns:
+    list: The scaled keypoints.
+    """
+
     # Convert keypoints to a numpy array
     keypoints = np.array(keypoints)
 
@@ -52,6 +67,15 @@ def scale_keypoints(keypoints, width, height):
 
 
 def filter_invalid_keypoints(keypoints):
+    """
+    Filters out invalid keypoints.
+
+    Parameters:
+    keypoints (list): The keypoints to filter.
+
+    Returns:
+    list: The filtered keypoints.
+    """
     # Filter out invalid keypoints
     # Keypoints are invalid if any coordinate is negative or if they are (0,0)
     keypoints = keypoints[(keypoints[:, 0] > 0) & (keypoints[:, 1] > 0)]
@@ -59,6 +83,17 @@ def filter_invalid_keypoints(keypoints):
 
 
 def calculate_bounding_box(keypoints, frame_shape, margin=50):
+    """
+    Calculates the minimum and maximum coordinates of the bounding box for a set of keypoints.
+
+    Parameters:
+    keypoints (list): The keypoints to calculate the bounding box for.
+    frame_shape (tuple): The dimensions of the frame.
+    margin (int): The margin to add to the bounding box.
+
+    Returns:
+    tuple: The minimum and maximum coordinates of the bounding box.
+    """
     # Calculate the minimum and maximum coordinates of the bounding box
     x_min, y_min = np.min(keypoints[:, :2], axis=0).astype(int) - margin
     x_max, y_max = np.max(keypoints[:, :2], axis=0).astype(int) + margin
@@ -71,8 +106,21 @@ def calculate_bounding_box(keypoints, frame_shape, margin=50):
 
     return x_min, y_min, x_max, y_max
 
+#  Function to draw bounding box and keypoints on the frame
+
 
 def draw_bounding_box_and_keypoints(frame, keypoints, person_id):
+    """
+    Draws a bounding box and keypoints on a frame.
+
+    Parameters:
+    frame (np.array): The frame to draw on.
+    keypoints (list): The keypoints to draw.
+    person_id (int): The identifier of the person.
+
+    Returns:
+    np.array: The frame with the bounding box and keypoints drawn on it.
+    """
     # Convert keypoints to a numpy array
     keypoints = np.array(keypoints)
 
@@ -119,45 +167,38 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
 
     keypoints = np.array(keypoints)  # Convert keypoints to numpy array
 
+    # Initialize bounding box variables
+    x_min, y_min, x_max, y_max = None, None, None, None
+
     # If there are keypoints
     if keypoints.shape[0] > 0:
+
         # Scale keypoints according to frame dimensions
-        keypoints[:, 0] *= frame.shape[1]
-        keypoints[:, 1] *= frame.shape[0]
+        keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
 
         # Filter out invalid keypoints
-        valid_keypoints = keypoints[(
-            keypoints[:, 0] != 0) & (keypoints[:, 1] != 0)]
+        valid_keypoints = filter_invalid_keypoints(keypoints)
 
         margin = 50  # Define a margin to increase the size of the bounding box
 
         # If there are valid keypoints
         if valid_keypoints.shape[0] > 0:
-            # Calculate the minimum and maximum coordinates of the bounding box
-            x_min, y_min = np.min(
-                valid_keypoints[:, :2], axis=0).astype(int) - margin
-            x_max, y_max = np.max(
-                valid_keypoints[:, :2], axis=0).astype(int) + margin
-        else:  # If there's only one keypoint
-            # Use the single keypoint to define the bounding box
-            x_min, y_min = (keypoints[0, 0] - margin, keypoints[0, 1] - margin)
-            x_max, y_max = (keypoints[0, 0] + margin, keypoints[0, 1] + margin)
+            x_min, y_min, x_max, y_max = calculate_bounding_box(
+                valid_keypoints, frame.shape, margin)
 
-        # Add the current bounding box to the list of previous bounding boxes for this person
-        previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
+        # If bounding box variables have been assigned
+        if None not in [x_min, y_min, x_max, y_max]:
 
-        # Calculate the average bounding box coordinates for this person
-        x_min, y_min, x_max, y_max = np.mean(
-            previous_bboxes[person_id], axis=0).astype(int)
+            # Add the current bounding box to the list of previous bounding boxes for this person
+            previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
 
-        # Ensure the bounding box coordinates are within the frame dimensions
-        x_min = max(0, x_min)
-        y_min = max(0, y_min)
-        x_max = min(frame.shape[1], x_max)
-        y_max = min(frame.shape[0], y_max)
+            # Calculate the average bounding box coordinates for this person
+            x_min, y_min, x_max, y_max = np.mean(
+                previous_bboxes[person_id], axis=0).astype(int)
 
-        # Apply circular blur to the region defined by the bounding box
-        frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
+            # Apply circular blur to the region defined by the bounding box
+            frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
+
     return frame
 
 
@@ -175,22 +216,17 @@ def calculate_time(frame_number, frame_rate):
     return frame_number / frame_rate
 
 
-# Define the output directory for the frames
-output_dir = "/Users/mopidevi/Workspace/projects/video-deid/frames"
-
-
-def process_video(video_path, keypoints_dir, output_path, show_progress):
+# Function to extract the dimensions of the video frames, frame rate and total number of frames
+def get_video_properties(video_path):
     """
-    Process the video and apply blur to faces.
+    Extracts the dimensions of the video frames, frame rate and total number of frames.
 
     Parameters:
-    video_path (str): Path to the input video.
-    keypoints_dir (str): Directory containing keypoints.
-    output_path (str): Path to the output video.
-    """
-    # Extract the video name from the video path
-    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    video_path (str): Path to the video file.
 
+    Returns:
+    tuple: The frame width, frame height, frame rate and total number of frames.
+    """
     # Open the video file
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -201,6 +237,36 @@ def process_video(video_path, keypoints_dir, output_path, show_progress):
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Close the video file
+    cap.release()
+
+    return frame_width, frame_height, fps, total_frames
+
+
+def process_video(video_path, keypoints_dir, output_path, show_progress):
+    """
+    Process the video and apply blur to faces.
+
+    Parameters:
+    video_path (str): Path to the input video.
+    keypoints_dir (str): Directory containing keypoints.
+    output_path (str): Path to the output video.
+
+    Returns:
+    None
+    """
+    # Extract the video name from the video path
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
+
+    # Get the dimensions of the video frames, frame rate and total number of frames
+    frame_width, frame_height, fps, total_frames = get_video_properties(
+        video_path)
+
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError("Cannot open video")
 
     # Create a progress bar
     if show_progress:
@@ -294,6 +360,9 @@ def combine_audio_video(audio_path, video_path, output_path):
     audio_path (str): Path to the audio file.
     video_path (str): Path to the video file.
     output_path (str): Path to the output file.
+
+    Returns:
+    None
     """
     try:
         # Load the video file
@@ -312,6 +381,15 @@ def combine_audio_video(audio_path, video_path, output_path):
 
 
 def setup_logging(log_file=None):
+    """
+    Set up logging.
+
+    Parameters:
+    log_file (str): Path to the log file.
+
+    Returns:
+    None
+    """
     # Set up logging
     log_format = '%(asctime)s - %(levelname)s - %(message)s'
     if log_file:
@@ -322,6 +400,22 @@ def setup_logging(log_file=None):
 
 
 def main():
+    """
+    Main function.
+
+    Processes the video and applies blur to faces.
+
+    Parameters:
+    video (str): Path to the input video.
+    keypoints (str): Directory containing keypoints.
+    audio (str): Path to the audio file.
+    output (str): Path to the output video.
+    log (str): Path to the log file.
+    show_progress (bool): Whether to show a progress bar.
+
+    Returns:
+    None
+    """
     # Create an argument parser
     parser = argparse.ArgumentParser(
         description='Process video and apply blur to faces.')
@@ -351,4 +445,11 @@ def main():
 
 
 if __name__ == '__main__':
+    """
+    Entry point.
+
+    Returns:
+    None
+    """
+
     main()
