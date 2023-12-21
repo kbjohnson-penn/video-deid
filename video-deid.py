@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict, deque
 from moviepy.editor import VideoFileClip, AudioFileClip
 import argparse
+from tqdm import tqdm
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -39,8 +40,67 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     return frame
 
 
+def scale_keypoints(keypoints, width, height):
+    # Convert keypoints to a numpy array
+    keypoints = np.array(keypoints)
+
+    # Assuming keypoints are normalized (i.e., in the range [0, 1])
+    # Scale the keypoints to the frame dimensions
+    keypoints[:, 0] *= width
+    keypoints[:, 1] *= height
+    return keypoints
+
+
+def filter_invalid_keypoints(keypoints):
+    # Filter out invalid keypoints
+    # Keypoints are invalid if any coordinate is negative or if they are (0,0)
+    keypoints = keypoints[(keypoints[:, 0] > 0) & (keypoints[:, 1] > 0)]
+    return keypoints
+
+
+def calculate_bounding_box(keypoints, frame_shape, margin=50):
+    # Calculate the minimum and maximum coordinates of the bounding box
+    x_min, y_min = np.min(keypoints[:, :2], axis=0).astype(int) - margin
+    x_max, y_max = np.max(keypoints[:, :2], axis=0).astype(int) + margin
+
+    # Ensure the bounding box coordinates are within the frame dimensions
+    x_min = max(0, x_min)
+    y_min = max(0, y_min)
+    x_max = min(frame_shape[1], x_max)
+    y_max = min(frame_shape[0], y_max)
+
+    return x_min, y_min, x_max, y_max
+
+
+def draw_bounding_box_and_keypoints(frame, keypoints, person_id):
+    # Convert keypoints to a numpy array
+    keypoints = np.array(keypoints)
+
+    # Scale keypoints according to frame dimensions
+    keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
+
+    # Filter out invalid keypoints
+    keypoints = filter_invalid_keypoints(keypoints)
+
+    # Only calculate and draw the bounding box if there are valid keypoints
+    if keypoints.size > 0:
+        # Calculate the bounding box for the face
+        x_min, y_min, x_max, y_max = calculate_bounding_box(
+            keypoints, frame.shape)
+
+        # Draw the bounding box on the frame
+        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+
+        # Draw the keypoints on the frame
+        for keypoint in keypoints:
+            cv2.circle(frame, (int(keypoint[0]), int(
+                keypoint[1])), 2, (0, 0, 255), -1)
+
+    return frame
+
+
 # Define a dictionary to store the bounding boxes of the previous frames for each person
-previous_bboxes = defaultdict(lambda: deque(maxlen=5))
+previous_bboxes = defaultdict(lambda: deque(maxlen=10))
 
 
 def process_keypoints_and_blur_faces(frame, keypoints, person_id):
@@ -101,7 +161,25 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
     return frame
 
 
-def process_video(video_path, keypoints_dir, output_path):
+def calculate_time(frame_number, frame_rate):
+    """
+    Calculates the time in the video given the frame number and the frame rate.
+
+    Parameters:
+    frame_number (int): The frame number.
+    frame_rate (float): The frame rate of the video.
+
+    Returns:
+    float: The time in the video.
+    """
+    return frame_number / frame_rate
+
+
+# Define the output directory for the frames
+output_dir = "/Users/mopidevi/Workspace/projects/video-deid/frames"
+
+
+def process_video(video_path, keypoints_dir, output_path, show_progress):
     """
     Process the video and apply blur to faces.
 
@@ -118,13 +196,20 @@ def process_video(video_path, keypoints_dir, output_path):
     if not cap.isOpened():
         raise IOError("Cannot open video")
 
-    # Get the dimensions of the video frames
+    # Get the dimensions of the video frames, frame rate and total number of frames
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Create a progress bar
+    if show_progress:
+        progress_bar = tqdm(total=total_frames,
+                            desc="Processing video", ncols=100)
 
     # Define the codec and create a VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, cap.get(cv2.CAP_PROP_FPS),
+    out = cv2.VideoWriter(output_path, fourcc, fps,
                           (frame_width, frame_height))
 
     # Initialize frame number
@@ -132,6 +217,10 @@ def process_video(video_path, keypoints_dir, output_path):
 
     # Process each frame in the video
     while cap.isOpened():
+        # Update the progress bar if show_progress is True
+        if show_progress:
+            progress_bar.update(1)
+
         # Read the next frame from the video
         ret, frame = cap.read()
         if not ret:
@@ -154,12 +243,25 @@ def process_video(video_path, keypoints_dir, output_path):
                     # Extract the face keypoints from the data
                     face_keypoints = [(data[i], data[i+1], data[i+2])
                                       for i in range(5, 5+5*3, 3)]
-                    # Log the keypoints
-                    logging.info(
-                        f"Frame {frame_number} keypoints: {face_keypoints}")
+                    # If there are no facial keypoints
+                    if all(keypoint[:2] == (0, 0) for keypoint in face_keypoints):
+                        # Calculate the time in the video
+                        time_in_video = calculate_time(frame_number, fps)
+                        # Log the frame number, the time in the video, and the lack of keypoints
+                        logging.warning(
+                            f"No facial keypoints found for frame {frame_number} at time {time_in_video} seconds. Keypoints: {face_keypoints}")
+                        # Define the output file name
+                        output_file_name = f"frame_{frame_number}.jpg"
+                        # Define the output file path
+                        output_file_path = os.path.join(
+                            output_dir, output_file_name)
+                        # Save the frame to the output file
+                        cv2.imwrite(output_file_path, frame)
                     # Process the keypoints and blur the face in the frame
                     frame = process_keypoints_and_blur_faces(
                         frame, face_keypoints, data[len(data)-1])
+                    # frame = draw_bounding_box_and_keypoints(
+                    #     frame, face_keypoints, data[len(data)-1])
         else:  # If the keypoints file does not exist
             # Log a warning
             logging.warning(
@@ -173,6 +275,10 @@ def process_video(video_path, keypoints_dir, output_path):
             # Print an error message
             print("Invalid frame")
         frame_number += 1
+
+    # Close the progress bar if show_progress is True
+    if show_progress:
+        progress_bar.close()
 
     # Close the video file, video writer and destroy all windows.
     cap.release()
@@ -228,6 +334,8 @@ def main():
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
     parser.add_argument('--log', help='Path to the log file.')
+    parser.add_argument("--show_progress",
+                        action="store_true", help="Show progress bar")
 
     # Parse the arguments
     args = parser.parse_args()
@@ -236,7 +344,7 @@ def main():
     setup_logging(args.log)
 
     # Process the video
-    process_video(args.video, args.keypoints, args.output)
+    process_video(args.video, args.keypoints, args.output, args.show_progress)
 
     # Combine the processed video with the audio
 #    combine_audio_video(args.audio, args.output, args.output)
