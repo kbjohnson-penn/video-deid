@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 from tqdm import tqdm
 import numpy as np
 import logging
@@ -379,16 +380,20 @@ def combine_audio_video(audio_path, video_path, output_path):
 
 def make_directory(path):
     """
-    Creates a directory if it does not exist.
+    Creates a directory.
 
     Parameters:
-    path (str): Path to the directory.
+    path (str): Path to the directory to create.
 
     Returns:
-    None
+    str: The path to the created directory.
     """
-    # Create the directory if it does not exist
+
+    # Create the directory
     os.makedirs(path, exist_ok=True)
+
+    # Return the new directory path
+    return path
 
 
 def setup_logging(log_file=None):
@@ -448,21 +453,25 @@ def main():
     # Extract the video file name (without extension) from the video path
     video_file_name = os.path.splitext(os.path.basename(args.video))[0]
 
+    # Current time stamp
+    time_stamp = int(time.time())
+
     # Current run directory
-    current_run = f"runs/{video_file_name}"
+    current_run = f"runs/{video_file_name}_{time_stamp}"
 
     # Create the output directories if they don't exist
     if args.save_frames:
-        make_directory(f"{current_run}/missing_frames")
+        missing_frames_dir = make_directory(
+            f"{current_run}/missing_frames")
 
-    # Set up logging if --log is provided
     if args.log:
-        make_directory(f"{current_run}/log_files")
-        setup_logging(f"{current_run}/log_files/{video_file_name}.log")
+        log_files_dir = make_directory(
+            f"{current_run}/logs")
+        setup_logging(f"{log_files_dir}/{video_file_name}_{time_stamp}.log")
 
     # Process the video
     process_video(args.video, args.keypoints, args.output,
-                  f"{current_run}/missing_frames", args.show_progress)
+                  f"{missing_frames_dir}", args.show_progress)
     # Combine the processed video with the audio
     # combine_audio_video(args.audio, args.output, args.output)
 
