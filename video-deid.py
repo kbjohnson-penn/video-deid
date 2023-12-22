@@ -1,14 +1,11 @@
-import cv2
-import numpy as np
 import os
-import logging
-from collections import defaultdict, deque
-from moviepy.editor import VideoFileClip, AudioFileClip
 import argparse
 from tqdm import tqdm
-
-# Define the output directory for the frames
-output_dir = "/Users/mopidevi/Workspace/projects/video-deid/frames"
+import numpy as np
+import logging
+from collections import defaultdict, deque
+import cv2
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -244,7 +241,7 @@ def get_video_properties(video_path):
     return frame_width, frame_height, fps, total_frames
 
 
-def process_video(video_path, keypoints_dir, output_path, show_progress):
+def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progress):
     """
     Process the video and apply blur to faces.
 
@@ -320,7 +317,7 @@ def process_video(video_path, keypoints_dir, output_path, show_progress):
                         output_file_name = f"frame_{frame_number}.jpg"
                         # Define the output file path
                         output_file_path = os.path.join(
-                            output_dir, output_file_name)
+                            frames_dir, output_file_name)
                         # Save the frame to the output file
                         cv2.imwrite(output_file_path, frame)
                     # Process the keypoints and blur the face in the frame
@@ -380,6 +377,20 @@ def combine_audio_video(audio_path, video_path, output_path):
         logging.error(f"Error combining audio and video: {e}")
 
 
+def make_directory(path):
+    """
+    Creates a directory if it does not exist.
+
+    Parameters:
+    path (str): Path to the directory.
+
+    Returns:
+    None
+    """
+    # Create the directory if it does not exist
+    os.makedirs(path, exist_ok=True)
+
+
 def setup_logging(log_file=None):
     """
     Set up logging.
@@ -423,25 +434,37 @@ def main():
                         help='Path to the input video.')
     parser.add_argument('--keypoints', required=True,
                         help='Directory containing keypoints.')
-#    parser.add_argument('--audio', required=True,
-#                        help='Path to the audio file.')
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
-    parser.add_argument('--log', help='Path to the log file.')
+    parser.add_argument('--log', action='store_true', help='Enable logging.')
+    parser.add_argument('--save_frames', action='store_true',
+                        help='Save frames without keypoints.')
     parser.add_argument("--show_progress",
                         action="store_true", help="Show progress bar")
 
     # Parse the arguments
     args = parser.parse_args()
 
-    # Set up logging
-    setup_logging(args.log)
+    # Extract the video file name (without extension) from the video path
+    video_file_name = os.path.splitext(os.path.basename(args.video))[0]
+
+    # Current run directory
+    current_run = f"runs/{video_file_name}"
+
+    # Create the output directories if they don't exist
+    if args.save_frames:
+        make_directory(f"{current_run}/missing_frames")
+
+    # Set up logging if --log is provided
+    if args.log:
+        make_directory(f"{current_run}/log_files")
+        setup_logging(f"{current_run}/log_files/{video_file_name}.log")
 
     # Process the video
-    process_video(args.video, args.keypoints, args.output, args.show_progress)
-
+    process_video(args.video, args.keypoints, args.output,
+                  f"{current_run}/missing_frames", args.show_progress)
     # Combine the processed video with the audio
-#    combine_audio_video(args.audio, args.output, args.output)
+    # combine_audio_video(args.audio, args.output, args.output)
 
 
 if __name__ == '__main__':
