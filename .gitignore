@@ -5,3 +5,5 @@
 *.jpg
 models
 .DS_Store
+runs/
+keypoints/
