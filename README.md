@@ -15,7 +15,7 @@ git clone https://github.com/kbjohnson-penn/video-deid.git
 Next, navigate to the project directory:
 
 ```bash
-cd <project_directory>
+cd video-deid
 ```
 
 Create a new Python virtual environment:
