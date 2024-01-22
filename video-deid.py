@@ -7,6 +7,7 @@ import logging
 from collections import defaultdict, deque
 import cv2
 from moviepy.editor import VideoFileClip, AudioFileClip
+from utils import setup_logging, make_directory, get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -41,72 +42,7 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     return frame
 
 
-def scale_keypoints(keypoints, width, height):
-    """
-    Scales keypoints to the frame dimensions.
-
-    Parameters:
-    keypoints (list): The keypoints to scale.
-    width (int): The width of the frame.
-    height (int): The height of the frame.
-
-    Returns:
-    list: The scaled keypoints.
-    """
-
-    # Convert keypoints to a numpy array
-    keypoints = np.array(keypoints)
-
-    # Assuming keypoints are normalized (i.e., in the range [0, 1])
-    # Scale the keypoints to the frame dimensions
-    keypoints[:, 0] *= width
-    keypoints[:, 1] *= height
-    return keypoints
-
-
-def filter_invalid_keypoints(keypoints):
-    """
-    Filters out invalid keypoints.
-
-    Parameters:
-    keypoints (list): The keypoints to filter.
-
-    Returns:
-    list: The filtered keypoints.
-    """
-    # Filter out invalid keypoints
-    # Keypoints are invalid if any coordinate is negative or if they are (0,0)
-    keypoints = keypoints[(keypoints[:, 0] > 0) & (keypoints[:, 1] > 0)]
-    return keypoints
-
-
-def calculate_bounding_box(keypoints, frame_shape, margin=50):
-    """
-    Calculates the minimum and maximum coordinates of the bounding box for a set of keypoints.
-
-    Parameters:
-    keypoints (list): The keypoints to calculate the bounding box for.
-    frame_shape (tuple): The dimensions of the frame.
-    margin (int): The margin to add to the bounding box.
-
-    Returns:
-    tuple: The minimum and maximum coordinates of the bounding box.
-    """
-    # Calculate the minimum and maximum coordinates of the bounding box
-    x_min, y_min = np.min(keypoints[:, :2], axis=0).astype(int) - margin
-    x_max, y_max = np.max(keypoints[:, :2], axis=0).astype(int) + margin
-
-    # Ensure the bounding box coordinates are within the frame dimensions
-    x_min = max(0, x_min)
-    y_min = max(0, y_min)
-    x_max = min(frame_shape[1], x_max)
-    y_max = min(frame_shape[0], y_max)
-
-    return x_min, y_min, x_max, y_max
-
 #  Function to draw bounding box and keypoints on the frame
-
-
 def draw_bounding_box_and_keypoints(frame, keypoints, person_id):
     """
     Draws a bounding box and keypoints on a frame.
@@ -198,48 +134,6 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
             frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
 
     return frame
-
-
-def calculate_time(frame_number, frame_rate):
-    """
-    Calculates the time in the video given the frame number and the frame rate.
-
-    Parameters:
-    frame_number (int): The frame number.
-    frame_rate (float): The frame rate of the video.
-
-    Returns:
-    float: The time in the video.
-    """
-    return frame_number / frame_rate
-
-
-# Function to extract the dimensions of the video frames, frame rate and total number of frames
-def get_video_properties(video_path):
-    """
-    Extracts the dimensions of the video frames, frame rate and total number of frames.
-
-    Parameters:
-    video_path (str): Path to the video file.
-
-    Returns:
-    tuple: The frame width, frame height, frame rate and total number of frames.
-    """
-    # Open the video file
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise IOError("Cannot open video")
-
-    # Get the dimensions of the video frames, frame rate and total number of frames
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    # Close the video file
-    cap.release()
-
-    return frame_width, frame_height, fps, total_frames
 
 
 def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progress):
@@ -376,43 +270,6 @@ def combine_audio_video(audio_path, video_path, output_path):
     except Exception as e:
         # Log an error message if an exception occurred
         logging.error(f"Error combining audio and video: {e}")
-
-
-def make_directory(path):
-    """
-    Creates a directory.
-
-    Parameters:
-    path (str): Path to the directory to create.
-
-    Returns:
-    str: The path to the created directory.
-    """
-
-    # Create the directory
-    os.makedirs(path, exist_ok=True)
-
-    # Return the new directory path
-    return path
-
-
-def setup_logging(log_file=None):
-    """
-    Set up logging.
-
-    Parameters:
-    log_file (str): Path to the log file.
-
-    Returns:
-    None
-    """
-    # Set up logging
-    log_format = '%(asctime)s - %(levelname)s - %(message)s'
-    if log_file:
-        logging.basicConfig(filename=log_file,
-                            level=logging.INFO, format=log_format)
-    else:
-        logging.basicConfig(level=logging.INFO, format=log_format)
 
 
 def main():

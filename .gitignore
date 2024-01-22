@@ -8,3 +8,4 @@ models
 *.log
 runs/
 keypoints/
+__pycache__/
