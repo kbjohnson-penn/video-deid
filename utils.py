@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 
-def setup_logging(log_file=None):
+def setup_logging(log_file=False):
     """
     Set up logging.
 
@@ -16,12 +16,10 @@ def setup_logging(log_file=None):
     None
     """
     # Set up logging
-    log_format = '%(asctime)s - %(levelname)s - %(message)s'
     if log_file:
+        log_format = '%(asctime)s - %(levelname)s - %(message)s'
         logging.basicConfig(filename=log_file,
                             level=logging.INFO, format=log_format)
-    else:
-        logging.basicConfig(level=logging.INFO, format=log_format)
 
 
 def make_directory(path):

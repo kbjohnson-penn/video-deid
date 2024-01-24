@@ -1,7 +1,4 @@
 import os
-import argparse
-from tqdm import tqdm
-import numpy as np
 import pandas as pd
 from utils import get_video_properties
 
@@ -59,15 +56,13 @@ def append_to_dataframe(df, frame_number, person_id, keypoints):
     return df
 
 
-def create_dataframe(video_path, keypoints_dir, output_path, show_progress):
+def create_keypoints_dataframe(video_path, keypoints_dir):
     """
     Creates a dataframe from the keypoints.
 
     Parameters:
     video_path (str): The path to the video.
     keypoints_dir (str): The path to the directory containing the keypoints.
-    output_path (str): The path to save the dataframe to.
-    show_progress (bool): Whether to show the progress bar.
 
     Returns:
     pd.DataFrame: The dataframe.
@@ -79,10 +74,6 @@ def create_dataframe(video_path, keypoints_dir, output_path, show_progress):
     # Get the dimensions of the video frames, frame rate and total number of frames
     frame_width, frame_height, fps, total_frames = get_video_properties(
         video_path)
-
-    # Create a progress bar
-    pbar = tqdm(total=total_frames, desc="Processing keypoints",
-                ncols=100) if show_progress else None
 
     # create a empty dataframe
     df = create_empty_dataframe()
@@ -110,54 +101,4 @@ def create_dataframe(video_path, keypoints_dir, output_path, show_progress):
                     df = append_to_dataframe(df=df, frame_number=frame_number, person_id=data[len(
                         data)-1], keypoints=face_keypoints)
 
-        # Update the progress bar
-        if pbar is not None:
-            pbar.update()
-
-    # Save the dataframe as a CSV file
-    df.to_csv(output_path, index=False)
-
-    # Close the progress bar
-    if pbar is not None:
-        pbar.close()
-
     return df
-
-
-def main():
-    """
-    Main function.
-
-    Returns:
-    None
-    """
-
-    # Create an argument parser
-    parser = argparse.ArgumentParser(
-        description='Create a dataframe and save as CSV.')
-    parser.add_argument('--video', required=True,
-                        help='Path to the input video.')
-    parser.add_argument('--keypoints', required=True,
-                        help='Directory containing keypoints.')
-    parser.add_argument('--output', required=True,
-                        help='Path to the output video.')
-    parser.add_argument("--show_progress",
-                        action="store_true", help="Show progress bar")
-
-    # Parse the arguments
-    args = parser.parse_args()
-
-    # Process the video
-    create_dataframe(args.video, args.keypoints,
-                     args.output, args.show_progress)
-
-
-if __name__ == '__main__':
-    """
-    Entry point.
-
-    Returns:
-    None
-    """
-
-    main()

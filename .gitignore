@@ -1,7 +1,6 @@
 *.mp3
 *.mp4
 *.avi
-*.txt
 *.jpg
 models
 .DS_Store
@@ -18,3 +17,4 @@ __pycache__/
 *.yaml
 *.yml
 *.pkl
+*.bak
