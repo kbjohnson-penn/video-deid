@@ -1,6 +1,7 @@
 import os
 import logging
 import cv2
+import pandas as pd
 import numpy as np
 
 
@@ -40,7 +41,7 @@ def make_directory(path):
     # Return the new directory path
     return path
 
-# Function to extract the dimensions of the video frames, frame rate and total number of frames
+
 def get_video_properties(video_path):
     """
     Extracts the dimensions of the video frames, frame rate and total number of frames.
@@ -80,6 +81,7 @@ def calculate_time(frame_number, frame_rate):
     float: The time in the video.
     """
     return frame_number / frame_rate
+
 
 def scale_keypoints(keypoints, width, height):
     """
@@ -143,3 +145,66 @@ def calculate_bounding_box(keypoints, frame_shape, margin=50):
     y_max = min(frame_shape[0], y_max)
 
     return x_min, y_min, x_max, y_max
+
+
+def interpolate_keypoints(df):
+    """
+    Applies linear interpolation on the frames with missing keypoints.
+
+    Parameters:
+    df (pd.DataFrame): The dataframe to interpolate the keypoints for.
+
+    Returns:
+    pd.DataFrame: The dataframe with the interpolated keypoints.
+    """
+    df = df.reset_index(drop=True)
+
+    # Replace zeros with NaNs
+    df.replace(0, np.nan, inplace=True)
+
+    # Group the dataframe by the person_id
+    grouped_df = df.groupby('person_id')
+
+    # Apply interpolation to each group and reset the index
+    df = grouped_df.apply(lambda group: group.interpolate(
+        method='linear', limit_direction='both')).reset_index(drop=True)
+
+    return df
+
+
+# Function to sort the df by frame_number and person_id
+def sort_df(df):
+    """
+    Sorts the dataframe by frame_number and person_id.
+
+    Parameters:
+    df (pd.DataFrame): The dataframe to sort.
+
+    Returns:
+    pd.DataFrame: The sorted dataframe.
+    """
+    # Sort the dataframe by frame_number and person_id
+    df.sort_values(['frame_number', 'person_id'], inplace=True)
+
+    # Return the sorted dataframe
+    return df
+
+
+def interpolate_and_sort_df(df):
+    """
+    Applies linear interpolation and sorts the dataframe.
+
+    Parameters:
+    df (pd.DataFrame): The dataframe to interpolate and sort.
+
+    Returns:
+    pd.DataFrame: The interpolated and sorted dataframe.
+    """
+    # Interpolate the dataframe
+    df = interpolate_keypoints(df)
+
+    # Sort the dataframe
+    df = sort_df(df)
+
+    # Return the dataframe
+    return df
