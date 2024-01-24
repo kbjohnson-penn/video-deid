@@ -3,11 +3,12 @@ import argparse
 import time
 from tqdm import tqdm
 import numpy as np
+import pandas as pd
 import logging
 from collections import defaultdict, deque
 import cv2
 from moviepy.editor import VideoFileClip, AudioFileClip
-from utils import setup_logging, make_directory, get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box
+from utils import setup_logging, make_directory, get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box, interpolate_and_sort_df
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -42,7 +43,6 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     return frame
 
 
-#  Function to draw bounding box and keypoints on the frame
 def draw_bounding_box_and_keypoints(frame, keypoints, person_id):
     """
     Draws a bounding box and keypoints on a frame.
@@ -133,10 +133,65 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
             # Apply circular blur to the region defined by the bounding box
             frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
 
-    return frame
+            return frame
 
 
-def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progress):
+def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
+    """
+    Gets the missing keypoints for a frame from a dataframe.
+
+    Parameters:
+    df (pd.DataFrame): The dataframe to get the missing keypoints from.
+    frame_number (int): The frame number.
+    person_id (int): The identifier of the person.
+
+    Returns:
+    list: The missing keypoints.
+    """
+    # Get the rows for the specified frame number and person_id
+    rows = df[(df['frame_number'] == frame_number) &
+              (df['person_id'] == person_id)]
+
+    # If there are rows
+    if not rows.empty:
+        # Extract the facial keypoints from the first row
+        keypoints = [[rows[f'x_{i}'].values[0], rows[f'y_{i}'].values[0],
+                      rows[f'c_{i}'].values[0]] for i in range(5)]
+
+        # Return the keypoints
+        return keypoints
+
+
+def log_keypoints_and_save_frame(frame, frame_number, fps, keypoints, frames_dir):
+    """
+    Logs a warning message and saves the frame to a file if there are no facial keypoints.
+
+    Parameters:
+    frame_number (int): The frame number.
+    time_in_video (float): The time in the video.
+    keypoints (list): The keypoints.
+    frames_dir (str): The directory to save the frame to.
+
+    Returns:
+    None
+    """
+
+    time_in_video = calculate_time(frame_number, fps)
+    # Log a warning message
+    logging.warning(
+        f"No facial keypoints found for frame {frame_number} at time {time_in_video} seconds. Keypoints: {keypoints}")
+
+    # Define the output file name
+    output_file_name = f"frame_{frame_number}.jpg"
+
+    # Define the output file path
+    output_file_path = os.path.join(frames_dir, output_file_name)
+
+    # Save the frame to the output file
+    cv2.imwrite(output_file_path, frame)
+
+
+def process_video(video_path, keypoints_dir, csv_path, output_path, frames_dir, show_progress):
     """
     Process the video and apply blur to faces.
 
@@ -169,6 +224,9 @@ def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progr
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps,
                           (frame_width, frame_height))
+
+    raw_df = pd.read_csv(csv_path)
+    interpolated_df = interpolate_and_sort_df(raw_df)
 
     # Initialize frame number
     frame_number = 1
@@ -203,23 +261,21 @@ def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progr
                                       for i in range(5, 5+5*3, 3)]
                     # If there are no facial keypoints
                     if all(keypoint[:2] == (0, 0) for keypoint in face_keypoints):
-                        # Calculate the time in the video
-                        time_in_video = calculate_time(frame_number, fps)
-                        # Log the frame number, the time in the video, and the lack of keypoints
-                        logging.warning(
-                            f"No facial keypoints found for frame {frame_number} at time {time_in_video} seconds. Keypoints: {face_keypoints}")
-                        # Define the output file name
-                        output_file_name = f"frame_{frame_number}.jpg"
-                        # Define the output file path
-                        output_file_path = os.path.join(
-                            frames_dir, output_file_name)
-                        # Save the frame to the output file
-                        cv2.imwrite(output_file_path, frame)
+                        # Log a warning message and save the frame to a file
+                        log_keypoints_and_save_frame(
+                            frame=frame, frame_number=frame_number, fps=fps, keypoints=face_keypoints, frames_dir=frames_dir)
+                        # Get the missing keypoints for the frame from the dataframe
+                        missing_keypoints = get_missing_keypoints_from_dataframe(
+                            interpolated_df, frame_number, data[len(data)-1])
+                        if missing_keypoints:
+                            face_keypoints = missing_keypoints
                     # Process the keypoints and blur the face in the frame
-                    frame = process_keypoints_and_blur_faces(
-                        frame, face_keypoints, data[len(data)-1])
-                    # frame = draw_bounding_box_and_keypoints(
+                    # frame = process_keypoints_and_blur_faces(
                     #     frame, face_keypoints, data[len(data)-1])
+                    frame = draw_bounding_box_and_keypoints(
+                        frame, face_keypoints, data[len(data)-1])
+                    missing_keypoints = []
+
         else:  # If the keypoints file does not exist
             # Log a warning
             logging.warning(
@@ -230,8 +286,8 @@ def process_video(video_path, keypoints_dir, output_path, frames_dir, show_progr
             # Write the frame to the output video
             out.write(frame)
         else:  # If the frame is invalid
-            # Print an error message
-            print("Invalid frame")
+            logging.warning(f"Invalid frame: {frame_number}")
+
         frame_number += 1
 
     # Close the progress bar if show_progress is True
@@ -296,6 +352,8 @@ def main():
                         help='Path to the input video.')
     parser.add_argument('--keypoints', required=True,
                         help='Directory containing keypoints.')
+    parser.add_argument('--csv_file', required=True,
+                        help='Path to CSV file.')
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
     parser.add_argument('--log', action='store_true', help='Enable logging.')
@@ -327,7 +385,7 @@ def main():
         setup_logging(f"{log_files_dir}/{video_file_name}_{time_stamp}.log")
 
     # Process the video
-    process_video(args.video, args.keypoints, args.output,
+    process_video(args.video, args.keypoints, args.csv_file, args.output,
                   f"{missing_frames_dir}", args.show_progress)
     # Combine the processed video with the audio
     # combine_audio_video(args.audio, args.output, args.output)
