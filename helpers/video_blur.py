@@ -4,7 +4,7 @@ import numpy as np
 import logging
 from collections import defaultdict, deque
 import cv2
-from utils import get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box, interpolate_and_sort_df
+from helpers.utils import get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box, interpolate_and_sort_df
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -187,13 +187,13 @@ def log_keypoints_and_save_frame(frame, frame_number, fps, keypoints, missing_fr
     cv2.imwrite(output_file_path, frame)
 
 
-def process_video(video_path, keypoints_dir, keypoints_df, output_path, missing_frames_dir, show_progress):
+def process_video(video_path, keypoints_list, keypoints_df, output_path, missing_frames_dir, show_progress):
     """
     Process the video and apply blur to faces.
 
     Parameters:
     video_path (str): Path to the input video.
-    keypoints_dir (str): Directory containing keypoints.
+    keypoints_list (List): List containing keypoints.
     keypoints_df (pd.DataFrame): Dataframe containing keypoints.
     output_path (str): Path to the output video.
     missing_frames_dir (str): Directory to save frames that don't have keypoints.
@@ -203,7 +203,7 @@ def process_video(video_path, keypoints_dir, keypoints_df, output_path, missing_
     None
     """
     # Extract the video name from the video path
-    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    # video_name = os.path.splitext(os.path.basename(video_path))[0]
 
     # Get the dimensions of the video frames, frame rate and total number of frames
     frame_width, frame_height, fps, total_frames = get_video_properties(
@@ -228,7 +228,7 @@ def process_video(video_path, keypoints_dir, keypoints_df, output_path, missing_
                           (frame_width, frame_height))
 
     # Initialize frame number
-    frame_number = 1
+    frame_number = 0
 
     # Process each frame in the video
     while cap.isOpened():
@@ -240,48 +240,72 @@ def process_video(video_path, keypoints_dir, keypoints_df, output_path, missing_
         ret, frame = cap.read()
         if not ret:
             break  # If no frame is returned, break the loop
+        
+        # Iterate through the keypoints dataframe and get the keypoints for the current frame number and person_id 
+        for index, row in keypoints_df[(keypoints_df['frame_number'] == frame_number)].iterrows():
+            # Extract the facial keypoints from the row
+            keypoints = [[row[f'x_{i}'], row[f'y_{i}'], row[f'c_{i}']] for i in range(5)]
+            # If there are no facial keypoints
+            if all(keypoint[:2] == (0, 0) for keypoint in keypoints):
+                # Log a warning message and save the frame to a file
+                log_keypoints_and_save_frame(
+                    frame=frame, frame_number=frame_number, fps=fps, keypoints=keypoints, missing_frames_dir=missing_frames_dir)
+                # Get the missing keypoints for the frame from the dataframe
+                missing_keypoints = get_missing_keypoints_from_dataframe(
+                    interpolated_keypoints_df, frame_number, row['person_id'])
+                if missing_keypoints:
+                    keypoints = missing_keypoints
+
+            # Process the keypoints and blur the face in the frame
+            frame = process_keypoints_and_blur_faces(
+                frame, keypoints, row['person_id'])
+
+            # Process the keypoints and draw the bounding box and keypoints on the frame
+            # frame = draw_bounding_box_and_keypoints(
+            #     frame, face_keypoints)
+
+            missing_keypoints = []
 
         # Construct the keypoints file name and path
-        keypoints_file_name = f"{video_name}_{frame_number}.txt"
-        keypoints_file_path = os.path.join(keypoints_dir, keypoints_file_name)
-
+        # keypoints_file_name = f"{video_name}_{frame_number}.txt"
+        # keypoints_file_path = os.path.join(keypoints_dir, keypoints_file_name)
         # If the keypoints file exists
-        if os.path.exists(keypoints_file_path):
-            # Open the keypoints file
-            with open(keypoints_file_path, 'r') as file:
-                # Read all lines from the file
-                lines = file.readlines()
-                # Process each line in the file
-                for line in lines:
-                    # Convert the line into a list of floats
-                    data = [float(x) for x in line.split()]
-                    # Extract the face keypoints from the data
-                    face_keypoints = [(data[i], data[i+1], data[i+2])
-                                      for i in range(5, 5+5*3, 3)]
-                    # If there are no facial keypoints
-                    if all(keypoint[:2] == (0, 0) for keypoint in face_keypoints):
-                        # Log a warning message and save the frame to a file
-                        log_keypoints_and_save_frame(
-                            frame=frame, frame_number=frame_number, fps=fps, keypoints=face_keypoints, missing_frames_dir=missing_frames_dir)
-                        # Get the missing keypoints for the frame from the dataframe
-                        missing_keypoints = get_missing_keypoints_from_dataframe(
-                            interpolated_keypoints_df, frame_number, data[len(data)-1])
-                        if missing_keypoints:
-                            face_keypoints = missing_keypoints
+        # if os.path.exists(keypoints_file_path):
+        #     # Open the keypoints file
+        #     with open(keypoints_file_path, 'r') as file:
+        #         # Read all lines from the file
+        #         lines = file.readlines()
+        #         # Process each line in the file
+        #         for line in lines:
+        #             # Convert the line into a list of floats
+        #             data = [float(x) for x in line.split()]
+        #             # Extract the face keypoints from the data
+        #             face_keypoints = [(data[i], data[i+1], data[i+2])
+        #                               for i in range(5, 5+5*3, 3)]
+        #             # If there are no facial keypoints
+        #             if all(keypoint[:2] == (0, 0) for keypoint in face_keypoints):
+        #                 # Log a warning message and save the frame to a file
+        #                 log_keypoints_and_save_frame(
+        #                     frame=frame, frame_number=frame_number, fps=fps, keypoints=face_keypoints, missing_frames_dir=missing_frames_dir)
+        #                 # Get the missing keypoints for the frame from the dataframe
+        #                 missing_keypoints = get_missing_keypoints_from_dataframe(
+        #                     interpolated_keypoints_df, frame_number, data[len(data)-1])
+        #                 if missing_keypoints:
+        #                     face_keypoints = missing_keypoints
 
-                    # Process the keypoints and blur the face in the frame
-                    frame = process_keypoints_and_blur_faces(
-                        frame, face_keypoints, data[len(data)-1])
+        #             # Process the keypoints and blur the face in the frame
+        #             frame = process_keypoints_and_blur_faces(
+        #                 frame, face_keypoints, data[len(data)-1])
 
-                    # Process the keypoints and draw the bounding box and keypoints on the frame
-                    # frame = draw_bounding_box_and_keypoints(
-                    #     frame, face_keypoints)
+        #             # Process the keypoints and draw the bounding box and keypoints on the frame
+        #             # frame = draw_bounding_box_and_keypoints(
+        #             #     frame, face_keypoints)
 
-                    missing_keypoints = []
+        #             missing_keypoints = []
 
-        else:  # If the keypoints file does not exist
-            logging.warning(
-                f"Keypoints file not found for frame {frame_number}: {keypoints_file_name}")
+        # else:  # If the keypoints file does not exist
+        #     logging.warning(
+        #         f"Keypoints file not found for frame {frame_number}: {keypoints_file_name}")
 
         # If the frame is valid
         if frame is not None:
