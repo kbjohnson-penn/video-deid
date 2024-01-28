@@ -1,8 +1,9 @@
 import os
 import logging
 import cv2
-import pandas as pd
 import numpy as np
+import pandas as pd
+import ast
 
 
 def setup_logging(log_file=False):
@@ -205,4 +206,63 @@ def interpolate_and_sort_df(df):
     df = sort_df(df)
 
     # Return the dataframe
+    return df
+
+
+def read_keypoints_from_csv(file_path):
+    """
+    Reads the keypoints from a file.
+
+    Parameters:
+    file_path (str): The path to the file containing the keypoints.
+
+    Returns:
+    list: The keypoints.
+    """
+
+    keypoints_file = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Convert string representation of list to an actual list
+            keypoints_file.append(ast.literal_eval(line.strip()))
+
+    keypoints_list = []
+    for keypoints in keypoints_file:
+        if len(keypoints) == 17:
+            keypoints = [keypoints]
+        keypoints_list.append(keypoints)
+
+    return keypoints_list
+
+
+# Function to create a dataframe from the list of keypoints. If there are multiple people in the frame, the keypoints for each person are stored in a separate row. The dataframe is sorted by frame_number and person_id.
+def create_keypoints_dataframe(keypoints_list):
+    """
+    Creates a dataframe from the list of keypoints. If there are multiple people in the frame, the keypoints for each person are stored in a separate row. The dataframe is sorted by frame_number and person_id.
+
+    Parameters:
+    keypoints_list (list): The list of keypoints.
+
+    Returns:
+    pd.DataFrame: The dataframe containing the keypoints.
+    """
+
+    df_list = []
+    for frame_number, keypoints in enumerate(keypoints_list):
+        for person_id, keypoint_coordinates in enumerate(keypoints):
+            person_data = {
+                'frame_number': frame_number,
+                'person_id': person_id,
+            }
+            for i, (x, y, c) in enumerate(keypoint_coordinates):
+                person_data.update({
+                    f'x_{i}': x,
+                    f'y_{i}': y,
+                    f'c_{i}': c
+                })
+            df_list.append(person_data)
+
+    df = pd.DataFrame(df_list)
+    df = df.sort_values(by=['frame_number', 'person_id'])
+
     return df
