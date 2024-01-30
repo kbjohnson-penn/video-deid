@@ -25,7 +25,7 @@ fi
 # Check if the Anaconda environment exists, if not, create it
 if [[ $(conda env list | awk '{print $1}' | grep -w "$ENV_NAME") != "$ENV_NAME" ]]; then
     echo "Creating Anaconda environment $ENV_NAME"
-    conda create -n "$ENV_NAME"
+    conda create -n "$ENV_NAME" -y
 fi
 
 # Activate the Anaconda environment
