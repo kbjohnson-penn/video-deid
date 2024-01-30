@@ -4,7 +4,7 @@ import numpy as np
 import logging
 from collections import defaultdict, deque
 import cv2
-from helpers.utils import get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box, interpolate_and_sort_df
+from helpers.utils import get_video_properties, calculate_time, scale_keypoints, filter_invalid_keypoints, calculate_bounding_box
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -77,7 +77,7 @@ def draw_bounding_box_and_keypoints(frame, keypoints):
 
 
 # Define a dictionary to store the bounding boxes of the previous frames for each person
-previous_bboxes = defaultdict(lambda: deque(maxlen=10))
+previous_bboxes = defaultdict(lambda: deque(maxlen=1))
 
 
 def process_keypoints_and_blur_faces(frame, keypoints, person_id):
@@ -92,43 +92,53 @@ def process_keypoints_and_blur_faces(frame, keypoints, person_id):
     Returns:
     np.array: The frame with the blurred face region.
     """
-    global previous_bboxes  # Access the global variable that stores previous bounding boxes
+    try:
+        if frame is None:
+            logging.error('Frame is None. Please check the video file.')
+            return None
 
-    keypoints = np.array(keypoints)  # Convert keypoints to numpy array
+        global previous_bboxes  # Access the global variable that stores previous bounding boxes
 
-    # Initialize bounding box variables
-    x_min, y_min, x_max, y_max = None, None, None, None
+        keypoints = np.array(keypoints)  # Convert keypoints to numpy array
 
-    # If there are keypoints
-    if keypoints.shape[0] > 0:
+        # Initialize bounding box variables
+        x_min, y_min, x_max, y_max = None, None, None, None
 
-        # Scale keypoints according to frame dimensions
-        keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
+        # If there are keypoints
+        if keypoints.shape[0] > 0:
 
-        # Filter out invalid keypoints
-        valid_keypoints = filter_invalid_keypoints(keypoints)
+            # Scale keypoints according to frame dimensions
+            keypoints = scale_keypoints(
+                keypoints, frame.shape[1], frame.shape[0])
 
-        margin = 50  # Define a margin to increase the size of the bounding box
+            # Filter out invalid keypoints
+            valid_keypoints = filter_invalid_keypoints(keypoints)
 
-        # If there are valid keypoints
-        if valid_keypoints.shape[0] > 0:
-            x_min, y_min, x_max, y_max = calculate_bounding_box(
-                valid_keypoints, frame.shape, margin)
+            margin = 50  # Define a margin to increase the size of the bounding box
 
-        # If bounding box variables have been assigned
-        if None not in [x_min, y_min, x_max, y_max]:
+            # If there are valid keypoints
+            if valid_keypoints.shape[0] > 0:
+                x_min, y_min, x_max, y_max = calculate_bounding_box(
+                    valid_keypoints, frame.shape, margin)
 
-            # Add the current bounding box to the list of previous bounding boxes for this person
-            previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
+            # If bounding box variables have been assigned
+            if None not in [x_min, y_min, x_max, y_max]:
 
-            # Calculate the average bounding box coordinates for this person
-            x_min, y_min, x_max, y_max = np.mean(
-                previous_bboxes[person_id], axis=0).astype(int)
+                # Add the current bounding box to the list of previous bounding boxes for this person
+                previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
 
-            # Apply circular blur to the region defined by the bounding box
-            frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
+                # Calculate the average bounding box coordinates for this person
+                x_min, y_min, x_max, y_max = np.mean(
+                    previous_bboxes[person_id], axis=0).astype(int)
 
-            return frame
+                # Apply circular blur to the region defined by the bounding box
+                frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
+
+                return frame
+
+    except Exception as e:
+        logging.error(f"Error processing frame: {e}")
+        return None
 
 
 def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
@@ -146,6 +156,9 @@ def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
     # Get the rows for the specified frame number and person_id
     rows = df[(df['frame_number'] == frame_number) &
               (df['person_id'] == person_id)]
+
+    if rows.empty:
+        return None
 
     # If there are rows
     if not rows.empty:
@@ -187,14 +200,14 @@ def log_keypoints_and_save_frame(frame, frame_number, fps, keypoints, missing_fr
     cv2.imwrite(output_file_path, frame)
 
 
-def process_video(video_path, keypoints_list, keypoints_df, output_path, missing_frames_dir, show_progress):
+def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_path, missing_frames_dir, show_progress):
     """
     Process the video and apply blur to faces.
 
     Parameters:
     video_path (str): Path to the input video.
-    keypoints_list (List): List containing keypoints.
     keypoints_df (pd.DataFrame): Dataframe containing keypoints.
+    interpolated_keypoints_df (pd.DataFrame): Dataframe containing interpolated keypoints.
     output_path (str): Path to the output video.
     missing_frames_dir (str): Directory to save frames that don't have keypoints.
     show_progress (bool): Show progress bar.
@@ -202,15 +215,11 @@ def process_video(video_path, keypoints_list, keypoints_df, output_path, missing
     Returns:
     None
     """
-    # Extract the video name from the video path
-    # video_name = os.path.splitext(os.path.basename(video_path))[0]
 
     # Get the dimensions of the video frames, frame rate and total number of frames
     frame_width, frame_height, fps, total_frames = get_video_properties(
         video_path)
-
-    # Create interpolated keypoints dataframe
-    interpolated_keypoints_df = interpolate_and_sort_df(keypoints_df)
+    logging.info('Got video properties.')
 
     # Open the video file
     cap = cv2.VideoCapture(video_path)
@@ -228,8 +237,9 @@ def process_video(video_path, keypoints_list, keypoints_df, output_path, missing
                           (frame_width, frame_height))
 
     # Initialize frame number
-    frame_number = 0
+    frame_number = 1
 
+    logging.info('Processing video...')
     # Process each frame in the video
     while cap.isOpened():
         # Update the progress bar if show_progress is True
@@ -240,72 +250,35 @@ def process_video(video_path, keypoints_list, keypoints_df, output_path, missing
         ret, frame = cap.read()
         if not ret:
             break  # If no frame is returned, break the loop
-        
-        # Iterate through the keypoints dataframe and get the keypoints for the current frame number and person_id 
+
+        # Create a copy of the frame to apply changes
+        frame_copy = frame.copy()
+
+        # Iterate through the keypoints dataframe and get the keypoints for the current frame number and person_id
         for index, row in keypoints_df[(keypoints_df['frame_number'] == frame_number)].iterrows():
             # Extract the facial keypoints from the row
-            keypoints = [[row[f'x_{i}'], row[f'y_{i}'], row[f'c_{i}']] for i in range(5)]
-            # If there are no facial keypoints
-            if all(keypoint[:2] == (0, 0) for keypoint in keypoints):
-                # Log a warning message and save the frame to a file
+            keypoints = [[row[f'x_{i}'], row[f'y_{i}'],
+                          row[f'c_{i}']] for i in range(5)]
+
+            # If are zeros in facial keypoints get the missing keypoints from the interpolated dataframe
+            if all(keypoint[:2] == [0, 0] for keypoint in keypoints):
+                # If there are no missing keypoints
                 log_keypoints_and_save_frame(
-                    frame=frame, frame_number=frame_number, fps=fps, keypoints=keypoints, missing_frames_dir=missing_frames_dir)
-                # Get the missing keypoints for the frame from the dataframe
-                missing_keypoints = get_missing_keypoints_from_dataframe(
+                    frame, frame_number, fps, keypoints, missing_frames_dir)
+
+                # Get the missing keypoints from the interpolated dataframe
+                keypoints = get_missing_keypoints_from_dataframe(
                     interpolated_keypoints_df, frame_number, row['person_id'])
-                if missing_keypoints:
-                    keypoints = missing_keypoints
 
-            # Process the keypoints and blur the face in the frame
-            frame = process_keypoints_and_blur_faces(
-                frame, keypoints, row['person_id'])
+            try:
+                frame_copy = process_keypoints_and_blur_faces(
+                    frame_copy, keypoints, row['person_id'])
+            except Exception as e:
+                logging.error(f"Error processing frame {frame_number}: {e}")
+                continue  # Skip to the next iteration of the loop
 
-            # Process the keypoints and draw the bounding box and keypoints on the frame
-            # frame = draw_bounding_box_and_keypoints(
-            #     frame, face_keypoints)
-
-            missing_keypoints = []
-
-        # Construct the keypoints file name and path
-        # keypoints_file_name = f"{video_name}_{frame_number}.txt"
-        # keypoints_file_path = os.path.join(keypoints_dir, keypoints_file_name)
-        # If the keypoints file exists
-        # if os.path.exists(keypoints_file_path):
-        #     # Open the keypoints file
-        #     with open(keypoints_file_path, 'r') as file:
-        #         # Read all lines from the file
-        #         lines = file.readlines()
-        #         # Process each line in the file
-        #         for line in lines:
-        #             # Convert the line into a list of floats
-        #             data = [float(x) for x in line.split()]
-        #             # Extract the face keypoints from the data
-        #             face_keypoints = [(data[i], data[i+1], data[i+2])
-        #                               for i in range(5, 5+5*3, 3)]
-        #             # If there are no facial keypoints
-        #             if all(keypoint[:2] == (0, 0) for keypoint in face_keypoints):
-        #                 # Log a warning message and save the frame to a file
-        #                 log_keypoints_and_save_frame(
-        #                     frame=frame, frame_number=frame_number, fps=fps, keypoints=face_keypoints, missing_frames_dir=missing_frames_dir)
-        #                 # Get the missing keypoints for the frame from the dataframe
-        #                 missing_keypoints = get_missing_keypoints_from_dataframe(
-        #                     interpolated_keypoints_df, frame_number, data[len(data)-1])
-        #                 if missing_keypoints:
-        #                     face_keypoints = missing_keypoints
-
-        #             # Process the keypoints and blur the face in the frame
-        #             frame = process_keypoints_and_blur_faces(
-        #                 frame, face_keypoints, data[len(data)-1])
-
-        #             # Process the keypoints and draw the bounding box and keypoints on the frame
-        #             # frame = draw_bounding_box_and_keypoints(
-        #             #     frame, face_keypoints)
-
-        #             missing_keypoints = []
-
-        # else:  # If the keypoints file does not exist
-        #     logging.warning(
-        #         f"Keypoints file not found for frame {frame_number}: {keypoints_file_name}")
+        # After the loop, assign the processed frame_copy back to frame
+        frame = frame_copy
 
         # If the frame is valid
         if frame is not None:
