@@ -251,8 +251,8 @@ def create_keypoints_dataframe(keypoints_list):
     for frame_number, keypoints in enumerate(keypoints_list):
         for person_id, keypoint_coordinates in enumerate(keypoints):
             person_data = {
-                'frame_number': frame_number,
-                'person_id': person_id,
+                'frame_number': frame_number + 1,
+                'person_id': person_id + 1,
             }
             for i, (x, y, c) in enumerate(keypoint_coordinates):
                 person_data.update({
