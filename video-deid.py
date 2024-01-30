@@ -2,10 +2,11 @@ import os
 import argparse
 import time
 import logging
-from utils import setup_logging, make_directory
-from generate_keypoints_dataframe import create_keypoints_dataframe
-from video_blur import process_video
-
+import pandas as pd
+from helpers.utils import setup_logging, make_directory, read_keypoints_from_csv, create_keypoints_dataframe, interpolate_and_sort_df
+from helpers.video_blur import process_video
+from helpers.pose_detection import predict_pose_and_save_results
+from helpers.audio import combine_audio_video
 
 logging.getLogger().setLevel(logging.ERROR)
 
@@ -23,12 +24,8 @@ def main():
         description='Process video and apply blur to faces.')
     parser.add_argument('--video', required=True,
                         help='Path to the input video.')
-    parser.add_argument('--keypoints', required=True,
-                        help='Directory containing keypoints.')
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
-    parser.add_argument('--save_csv', action='store_true',
-                        help='Save CSV file.')
     parser.add_argument('--log', action='store_true', help='Enable logging.')
     parser.add_argument('--save_frames', action='store_true',
                         help='Save frames that don\'t have keypoints.')
@@ -60,23 +57,37 @@ def main():
             missing_frames_dir = make_directory(
                 f"{log_files_dir}/missing_frames")
 
-    # Generate the keypoints dataframe
-    keypoints_dataframe = create_keypoints_dataframe(
-        args.video, args.keypoints)
+    # Create the current directory if it doesn't exist
+    make_directory(current_run)
+    logging.info('Created current run directory.')
+    keypoints_path = f"{current_run}/keypoints_{video_file_name}_{time_stamp}.csv"
 
-    logging.info('Created keypoints dataframe.')
+    logging.info('Predicting pose and saving results.')
+    # Predict pose and save results
+    predict_pose_and_save_results(args.video, keypoints_path)
+    logging.info('Finished predicting pose and saving results.')
 
-    # Save the keypoints dataframe as a CSV file
-    if args.save_csv:
-        make_directory(current_run)
-        keypoints_dataframe.to_csv(
-            f"{current_run}/keypoints_{video_file_name}_{time_stamp}.csv", index=False)
-        logging.info(
-            f'Saved keypoints dataframe to CSV file: {current_run}/keypoints_{video_file_name}_{time_stamp}.csv')
+    # Read the keypoints from the CSV file
+    logging.info('Reading keypoints from CSV.')
+    keypoints_list = read_keypoints_from_csv(keypoints_path)
+
+    # Create the keypoints dataframe
+    keypoints_dataframe = create_keypoints_dataframe(keypoints_list)
+    keypoints_dataframe.to_csv(
+        f"{current_run}/{video_file_name}_dataframe.csv", index=False)
+    interpolated_keypoints_df = interpolate_and_sort_df(keypoints_dataframe)
+    interpolated_keypoints_df.to_csv(
+        f"{current_run}/{video_file_name}_interpolated.csv", index=False)
+    logging.info('Created keypoints and interpolated dataframe.')
 
     # Process the video
-    process_video(args.video, args.keypoints, keypoints_dataframe, args.output,
+    process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, "processed_video.mp4",
                   f"{missing_frames_dir}", args.progress)
+
+    # Combine the audio and video
+    combine_audio_video(args.video, "processed_video.mp4",  args.output)
+    logging.info('Finished combining audio and video.')
+
     logging.info('Finished processing video.')
 
 

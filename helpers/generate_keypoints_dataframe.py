@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from utils import get_video_properties
+from helpers.utils import get_video_properties
 
 
 def create_empty_dataframe():
