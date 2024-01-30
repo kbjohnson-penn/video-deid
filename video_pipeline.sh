@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Directory containing the videos
 VIDEO_DIR="/home/mopidevi/data/CSI"
 OUTPUT_DIR="/home/mopidevi/data/processed_data"
