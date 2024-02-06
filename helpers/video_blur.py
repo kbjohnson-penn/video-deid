@@ -257,7 +257,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
                     interpolated_keypoints_df, frame_number, row['person_id'])
             try:
                 frame_copy = process_frame(
-                    frame_copy, keypoints, row['person_id'], blur_faces=False, draw_bbox=True)
+                    frame_copy, keypoints, row['person_id'], blur_faces=True, draw_bbox=False)
 
             except Exception as e:
                 logging.error(f"Error processing frame {frame_number}: {e}")
