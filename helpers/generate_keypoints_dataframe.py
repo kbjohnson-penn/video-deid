@@ -56,7 +56,7 @@ def append_to_dataframe(df, frame_number, person_id, keypoints):
     return df
 
 
-def create_keypoints_dataframe(video_path, keypoints_dir):
+def create_keypoints_dataframe_from_labels(video_path, keypoints_dir):
     """
     Creates a dataframe from the keypoints.
 
