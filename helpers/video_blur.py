@@ -18,10 +18,8 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     Returns:
     np.array: The frame with the blurred region.
     """
-    # Calculate the center of the region to blur
+    # Calculate the center and radius of the region to blur
     center = (int((x_min + x_max) // 2), int((y_min + y_max) // 2))
-
-    # Calculate the radius of the region to blur
     radius = int(max((x_max - x_min) // 2, (y_max - y_min) // 2))
 
     # Create a mask of the same size as the frame
@@ -34,111 +32,99 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     blurred_frame = cv2.GaussianBlur(frame, (99, 99), 30)
 
     # Use the mask to replace the region to blur in the original frame with the corresponding region in the blurred frame
-    frame = np.where(mask[:, :, None] == 255, blurred_frame, frame)
+    np.copyto(frame, blurred_frame, where=mask[:, :, None] == 255)
 
     return frame
 
 
-def draw_bounding_box_and_keypoints(frame, keypoints):
+def draw_bounding_box_and_keypoints(frame, keypoints, x_min, y_min, x_max, y_max):
     """
     Draws a bounding box and keypoints on a frame.
 
     Parameters:
     frame (np.array): The frame to draw on.
     keypoints (list): The keypoints to draw.
+    x_min, y_min, x_max, y_max (int): The coordinates of the bounding box.
 
     Returns:
     np.array: The frame with the bounding box and keypoints drawn on it.
     """
-    # Convert keypoints to a numpy array
-    keypoints = np.array(keypoints)
+    # Draw the bounding box on the frame
+    cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
 
-    # Scale keypoints according to frame dimensions
-    keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
-
-    # Filter out invalid keypoints
-    keypoints = filter_invalid_keypoints(keypoints)
-
-    # Only calculate and draw the bounding box if there are valid keypoints
-    if keypoints.size > 0:
-        # Calculate the bounding box for the face
-        x_min, y_min, x_max, y_max = calculate_bounding_box(
-            keypoints, frame.shape)
-
-        # Draw the bounding box on the frame
-        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-
-        # Draw the keypoints on the frame
-        for keypoint in keypoints:
-            cv2.circle(frame, (int(keypoint[0]), int(
-                keypoint[1])), 2, (0, 0, 255), -1)
+    # Draw the keypoints on the frame
+    for keypoint in keypoints:
+        cv2.circle(frame, (int(keypoint[0]), int(
+            keypoint[1])), 2, (0, 0, 255), -1)
 
     return frame
 
 
-# Define a dictionary to store the bounding boxes of the previous frames for each person
-previous_bboxes = defaultdict(lambda: deque(maxlen=1))
+previous_bboxes = defaultdict(lambda: deque(maxlen=5))
 
 
-def process_keypoints_and_blur_faces(frame, keypoints, person_id):
+def process_frame(frame, keypoints, person_id, blur_faces=False, draw_bbox=False):
     """
-    Processes keypoints and applies a blur to the face region in a frame.
+    Processes a frame: draws a bounding box and keypoints or applies a blur to the face region.
 
     Parameters:
     frame (np.array): The frame to process.
     keypoints (list): The keypoints to process.
     person_id (int): The identifier of the person.
+    blur_faces (bool): Whether to blur the faces.
+    draw_bbox (bool): Whether to draw a bounding box.
 
     Returns:
-    np.array: The frame with the blurred face region.
+    np.array: The processed frame.
     """
-    try:
-        if frame is None:
-            logging.error('Frame is None. Please check the video file.')
-            return None
-
-        global previous_bboxes  # Access the global variable that stores previous bounding boxes
-
-        keypoints = np.array(keypoints)  # Convert keypoints to numpy array
-
-        # Initialize bounding box variables
-        x_min, y_min, x_max, y_max = None, None, None, None
-
-        # If there are keypoints
-        if keypoints.shape[0] > 0:
-
-            # Scale keypoints according to frame dimensions
-            keypoints = scale_keypoints(
-                keypoints, frame.shape[1], frame.shape[0])
-
-            # Filter out invalid keypoints
-            valid_keypoints = filter_invalid_keypoints(keypoints)
-
-            margin = 50  # Define a margin to increase the size of the bounding box
-
-            # If there are valid keypoints
-            if valid_keypoints.shape[0] > 0:
-                x_min, y_min, x_max, y_max = calculate_bounding_box(
-                    valid_keypoints, frame.shape, margin)
-
-            # If bounding box variables have been assigned
-            if None not in [x_min, y_min, x_max, y_max]:
-
-                # Add the current bounding box to the list of previous bounding boxes for this person
-                previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
-
-                # Calculate the average bounding box coordinates for this person
-                x_min, y_min, x_max, y_max = np.mean(
-                    previous_bboxes[person_id], axis=0).astype(int)
-
-                # Apply circular blur to the region defined by the bounding box
-                frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
-
-                return frame
-
-    except Exception as e:
-        logging.error(f"Error processing frame: {e}")
+    if frame is None:
+        logging.error('Frame is None. Please check the video file.')
         return None
+
+    global previous_bboxes  # Access the global variable that stores previous bounding boxes
+
+    keypoints = np.array(keypoints)  # Convert keypoints to numpy array
+
+    # Initialize bounding box variables
+    x_min, y_min, x_max, y_max = None, None, None, None
+
+    # If there are keypoints
+    if keypoints.shape[0] > 0:
+
+        # Scale keypoints according to frame dimensions
+        keypoints = scale_keypoints(
+            keypoints, frame.shape[1], frame.shape[0])
+
+        # Filter out invalid keypoints
+        keypoints = filter_invalid_keypoints(keypoints)
+
+        margin = 50  # Define a margin to increase the size of the bounding box
+
+        # If there are valid keypoints
+        if keypoints.shape[0] > 0:
+            x_min, y_min, x_max, y_max = calculate_bounding_box(
+                keypoints, frame.shape, margin)
+
+        # If bounding box variables have been assigned
+        if None not in [x_min, y_min, x_max, y_max]:
+
+            # Add the current bounding box to the list of previous bounding boxes for this person
+            previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
+
+            # Calculate the average bounding box coordinates for this person
+            x_min, y_min, x_max, y_max = np.mean(
+                previous_bboxes[person_id], axis=0).astype(int)
+
+            if blur_faces:
+                # Apply circular blur to the region defined by the bounding box
+                frame = apply_circular_blur(
+                    frame, x_min, y_min, x_max, y_max)
+            if draw_bbox:
+                # Draw the bounding box on the frame
+                frame = draw_bounding_box_and_keypoints(
+                    frame, keypoints, x_min, y_min, x_max, y_max)
+
+            return frame
 
 
 def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
@@ -219,7 +205,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
     # Get the dimensions of the video frames, frame rate and total number of frames
     frame_width, frame_height, fps, total_frames = get_video_properties(
         video_path)
-    logging.info('Got video properties.')
+    logging.info('Getting video properties.')
 
     # Open the video file
     cap = cv2.VideoCapture(video_path)
@@ -269,10 +255,10 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
                 # Get the missing keypoints from the interpolated dataframe
                 keypoints = get_missing_keypoints_from_dataframe(
                     interpolated_keypoints_df, frame_number, row['person_id'])
-
             try:
-                frame_copy = process_keypoints_and_blur_faces(
-                    frame_copy, keypoints, row['person_id'])
+                frame_copy = process_frame(
+                    frame_copy, keypoints, row['person_id'], blur_faces=False, draw_bbox=True)
+
             except Exception as e:
                 logging.error(f"Error processing frame {frame_number}: {e}")
                 continue  # Skip to the next iteration of the loop
