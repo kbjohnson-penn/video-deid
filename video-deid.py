@@ -85,14 +85,14 @@ def main():
 
     # Process the video
     logging.info('Processing video.')
-    process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, "processed_video.mp4",
-                  f"{missing_frames_dir}", args.progress)
-    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, args.output,
+    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, "processed_video.mp4",
     #               f"{missing_frames_dir}", args.progress)
+    process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, args.output,
+                  f"{missing_frames_dir}", args.progress)
 
     # Combine the audio and video
-    combine_audio_video(args.video, "processed_video.mp4",  args.output)
-    logging.info('Finished combining audio and video.')
+    # combine_audio_video(args.video, "processed_video.mp4",  args.output)
+    # logging.info('Finished combining audio and video.')
 
     logging.info('Finished processing video.')
 
