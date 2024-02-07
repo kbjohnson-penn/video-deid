@@ -22,6 +22,8 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     center = (int((x_min + x_max) // 2), int((y_min + y_max) // 2))
     radius = int(max((x_max - x_min) // 2, (y_max - y_min) // 2))
 
+    radius = radius * 2
+
     # Create a mask of the same size as the frame
     mask = np.zeros(frame.shape[:2], dtype="uint8")
 
@@ -63,7 +65,7 @@ def draw_bounding_box_and_keypoints(frame, keypoints, x_min, y_min, x_max, y_max
 # Initialize global dictionaries for Kalman filters and recent positions
 kalman_filters = {}
 recent_positions = defaultdict(lambda: deque(
-    maxlen=2))  # Adjust maxlen for smoothing
+    maxlen=1))  # Adjust maxlen for smoothing
 
 
 def initialize_kalman_filter(fps):
@@ -130,26 +132,38 @@ def process_frame(frame, keypoints, person_id, blur_faces=False, draw_bbox=False
         return None
 
     if person_id not in kalman_filters:
-        # Initialize Kalman Filter without initial_position because it's unknown at this point
-        kalman_filters[person_id] = initialize_kalman_filter(fps)
+        # Initialize Kalman Filter with the initial position if keypoints are available
+        if keypoints and len(keypoints) > 0:
+            initial_keypoints = np.array(keypoints)
+            initial_keypoints = scale_keypoints(
+                initial_keypoints, frame.shape[1], frame.shape[0])
+            initial_keypoints = filter_invalid_keypoints(initial_keypoints)
+            if initial_keypoints.shape[0] > 0:
+                initial_position = np.mean(initial_keypoints, axis=0)[:2]
+                kf = initialize_kalman_filter(fps)
+                # Set the initial state with the position and zero velocity
+                kf.statePost[:2] = initial_position.astype(np.float32)
+                kf.statePost[2:4] = [0, 0]
+                kalman_filters[person_id] = kf
+        else:
+            # Initialize without any position if no keypoints are available
+            kalman_filters[person_id] = initialize_kalman_filter(fps)
+    else:
+        kf = kalman_filters[person_id]
 
-    kf = kalman_filters[person_id]
+    # Predict the next state with the Kalman Filter
+    predicted = kf.predict()
 
-    # Assume keypoints=None or an empty list indicates occlusion
-    if keypoints is not None and len(keypoints) > 0:
+    # If keypoints are available, update the Kalman Filter
+    if keypoints and len(keypoints) > 0:
         keypoints = np.array(keypoints)
         keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
         keypoints = filter_invalid_keypoints(keypoints)
-
         if keypoints.shape[0] > 0:
-            # Measurement available, update Kalman Filter
             measurement = np.mean(keypoints, axis=0)[:2]
             kf.correct(measurement.astype(np.float32))
-    # If keypoints are missing, rely on prediction alone without correction
-    predicted = kf.predict()
-    estimated_x, estimated_y = int(predicted[0]), int(predicted[1])
 
-    # Update recent_positions even during occlusions using predictions
+    estimated_x, estimated_y = int(predicted[0]), int(predicted[1])
     recent_positions[person_id].append((estimated_x, estimated_y))
 
     # Apply temporal smoothing (moving average) for smooth trajectory
@@ -160,7 +174,6 @@ def process_frame(frame, keypoints, person_id, blur_faces=False, draw_bbox=False
     if blur_faces or draw_bbox:
         x_min, y_min, x_max, y_max = calculate_bounding_box(
             np.array([[smooth_x, smooth_y]]), frame.shape, margin=50)
-
         if blur_faces:
             frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
         if draw_bbox:
@@ -300,7 +313,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
                     interpolated_keypoints_df, frame_number, row['person_id'])
             try:
                 frame_copy = process_frame(
-                    frame_copy, keypoints, row['person_id'], blur_faces=False, draw_bbox=True, fps=fps)
+                    frame_copy, keypoints, row['person_id'], blur_faces=True, draw_bbox=False, fps=fps)
 
             except Exception as e:
                 logging.error(f"Error processing frame {frame_number}: {e}")
