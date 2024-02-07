@@ -60,71 +60,114 @@ def draw_bounding_box_and_keypoints(frame, keypoints, x_min, y_min, x_max, y_max
     return frame
 
 
-previous_bboxes = defaultdict(lambda: deque(maxlen=5))
+# Initialize global dictionaries for Kalman filters and recent positions
+kalman_filters = {}
+recent_positions = defaultdict(lambda: deque(
+    maxlen=2))  # Adjust maxlen for smoothing
 
 
-def process_frame(frame, keypoints, person_id, blur_faces=False, draw_bbox=False):
+def initialize_kalman_filter(fps):
     """
-    Processes a frame: draws a bounding box and keypoints or applies a blur to the face region.
+    Initializes a Kalman filter.
+
+    Parameters:
+    fps (float): The frame rate.
+
+    Returns:
+    cv2.KalmanFilter: The initialized Kalman filter.
+    """
+
+    dt = 1/fps
+
+    kf = cv2.KalmanFilter(4, 2)  # 4 dynamic states, 2 measurement states
+
+    # State Transition Matrix (A)
+    kf.transitionMatrix = np.array([[1, 0, dt, 0],
+                                    [0, 1, 0, dt],
+                                    [0, 0, 1, 0],
+                                    [0, 0, 0, 1]], np.float32)
+
+    # Measurement Matrix (H)
+    kf.measurementMatrix = np.array([[1, 0, 0, 0],
+                                     [0, 1, 0, 0]], np.float32)
+
+    # Process Noise Covariance (Q)
+    kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
+
+    # Measurement Noise Covariance (R)
+    kf.measurementNoiseCov = np.array([[1, 0],
+                                       [0, 1]], np.float32) * 1
+
+    # Error Covariance Matrix (P)
+    kf.errorCovPost = np.eye(4, dtype=np.float32)
+
+    # Initial State (x)
+    kf.statePost = np.zeros(4, np.float32)
+
+    return kf
+
+
+def process_frame(frame, keypoints, person_id, blur_faces=False, draw_bbox=False, fps=30):
+    """
+    Processes a frame and applies blur to faces.
 
     Parameters:
     frame (np.array): The frame to process.
-    keypoints (list): The keypoints to process.
+    keypoints (list): The keypoints for the frame.
     person_id (int): The identifier of the person.
-    blur_faces (bool): Whether to blur the faces.
-    draw_bbox (bool): Whether to draw a bounding box.
+    blur_faces (bool): Whether to blur faces.
+    draw_bbox (bool): Whether to draw bounding boxes.
+    fps (float): The frame rate.
 
     Returns:
     np.array: The processed frame.
     """
+
+    global kalman_filters, recent_positions
+
     if frame is None:
         logging.error('Frame is None. Please check the video file.')
         return None
 
-    global previous_bboxes  # Access the global variable that stores previous bounding boxes
+    if person_id not in kalman_filters:
+        # Initialize Kalman Filter without initial_position because it's unknown at this point
+        kalman_filters[person_id] = initialize_kalman_filter(fps)
 
-    keypoints = np.array(keypoints)  # Convert keypoints to numpy array
+    kf = kalman_filters[person_id]
 
-    # Initialize bounding box variables
-    x_min, y_min, x_max, y_max = None, None, None, None
-
-    # If there are keypoints
-    if keypoints.shape[0] > 0:
-
-        # Scale keypoints according to frame dimensions
-        keypoints = scale_keypoints(
-            keypoints, frame.shape[1], frame.shape[0])
-
-        # Filter out invalid keypoints
+    # Assume keypoints=None or an empty list indicates occlusion
+    if keypoints is not None and len(keypoints) > 0:
+        keypoints = np.array(keypoints)
+        keypoints = scale_keypoints(keypoints, frame.shape[1], frame.shape[0])
         keypoints = filter_invalid_keypoints(keypoints)
 
-        margin = 50  # Define a margin to increase the size of the bounding box
-
-        # If there are valid keypoints
         if keypoints.shape[0] > 0:
-            x_min, y_min, x_max, y_max = calculate_bounding_box(
-                keypoints, frame.shape, margin)
+            # Measurement available, update Kalman Filter
+            measurement = np.mean(keypoints, axis=0)[:2]
+            kf.correct(measurement.astype(np.float32))
+    # If keypoints are missing, rely on prediction alone without correction
+    predicted = kf.predict()
+    estimated_x, estimated_y = int(predicted[0]), int(predicted[1])
 
-        # If bounding box variables have been assigned
-        if None not in [x_min, y_min, x_max, y_max]:
+    # Update recent_positions even during occlusions using predictions
+    recent_positions[person_id].append((estimated_x, estimated_y))
 
-            # Add the current bounding box to the list of previous bounding boxes for this person
-            previous_bboxes[person_id].append((x_min, y_min, x_max, y_max))
+    # Apply temporal smoothing (moving average) for smooth trajectory
+    smooth_x, smooth_y = np.mean(
+        recent_positions[person_id], axis=0).astype(int)
 
-            # Calculate the average bounding box coordinates for this person
-            x_min, y_min, x_max, y_max = np.mean(
-                previous_bboxes[person_id], axis=0).astype(int)
+    # Draw bounding box based on smoothed or predicted position
+    if blur_faces or draw_bbox:
+        x_min, y_min, x_max, y_max = calculate_bounding_box(
+            np.array([[smooth_x, smooth_y]]), frame.shape, margin=50)
 
-            if blur_faces:
-                # Apply circular blur to the region defined by the bounding box
-                frame = apply_circular_blur(
-                    frame, x_min, y_min, x_max, y_max)
-            if draw_bbox:
-                # Draw the bounding box on the frame
-                frame = draw_bounding_box_and_keypoints(
-                    frame, keypoints, x_min, y_min, x_max, y_max)
+        if blur_faces:
+            frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
+        if draw_bbox:
+            frame = draw_bounding_box_and_keypoints(
+                frame, [[smooth_x, smooth_y]], x_min, y_min, x_max, y_max)
 
-            return frame
+    return frame
 
 
 def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
@@ -257,7 +300,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
                     interpolated_keypoints_df, frame_number, row['person_id'])
             try:
                 frame_copy = process_frame(
-                    frame_copy, keypoints, row['person_id'], blur_faces=True, draw_bbox=False)
+                    frame_copy, keypoints, row['person_id'], blur_faces=False, draw_bbox=True, fps=fps)
 
             except Exception as e:
                 logging.error(f"Error processing frame {frame_number}: {e}")
