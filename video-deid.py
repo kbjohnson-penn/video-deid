@@ -2,7 +2,7 @@ import os
 import argparse
 import time
 import logging
-import pandas as pd
+import tempfile
 from helpers.utils import setup_logging, make_directory, interpolate_and_sort_df
 from helpers.video_blur import process_video
 from helpers.audio import combine_audio_video
@@ -17,7 +17,7 @@ def main():
     Main function. Parses the arguments and processes the video.
 
     Returns:
-    None
+    - None
     """
 
     # Create an argument parser
@@ -30,8 +30,6 @@ def main():
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
     parser.add_argument('--log', action='store_true', help='Enable logging.')
-    parser.add_argument('--save_frames', action='store_true',
-                        help='Save frames that don\'t have keypoints.')
     parser.add_argument("--progress",
                         action="store_true", help="Show progress bar")
 
@@ -47,18 +45,11 @@ def main():
     # Current run directory
     current_run = f"runs/{video_file_name}_{time_stamp}"
 
-    # Initialize missing_frames_dir to None
-    missing_frames_dir = None
-
     # Create the output directories if they don't exist
-    if args.log or args.save_frames:
+    if args.log:
         log_files_dir = make_directory(f"{current_run}/logs")
-        if args.log:
-            setup_logging(
-                f"{log_files_dir}/{video_file_name}_{time_stamp}.log")
-        if args.save_frames:
-            missing_frames_dir = make_directory(
-                f"{log_files_dir}/missing_frames")
+        setup_logging(
+            f"{log_files_dir}/{video_file_name}_{time_stamp}.log")
 
     # Create the current directory if it doesn't exist
     make_directory(current_run)
@@ -84,15 +75,20 @@ def main():
         f"{current_run}/{video_file_name}_interpolated.csv", index=False)
 
     # Process the video
+    temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     logging.info('Processing video.')
-    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, "processed_video.mp4",
-    #               f"{missing_frames_dir}", args.progress)
-    process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, args.output,
-                  f"{missing_frames_dir}", args.progress)
+    process_video(args.video, keypoints_dataframe,
+                  interpolated_keypoints_df, temp_file.name, args.progress)
+    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, args.output,
+    #              args.progress)
+
+    logging.info('Comining audio and video.')
 
     # Combine the audio and video
-    # combine_audio_video(args.video, "processed_video.mp4",  args.output)
-    # logging.info('Finished combining audio and video.')
+    combine_audio_video(args.video, temp_file.name,  args.output)
+
+    # Delete the temporary file
+    os.remove(temp_file.name)
 
     logging.info('Finished processing video.')
 
@@ -102,7 +98,7 @@ if __name__ == '__main__':
     Entry point.
 
     Returns:
-    None
+    - None
     """
 
     main()
