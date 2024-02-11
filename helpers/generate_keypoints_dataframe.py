@@ -8,10 +8,10 @@ def create_empty_dataframe():
     Creates an empty dataframe with the required columns.
 
     Parameters:
-    None
+    - None
 
     Returns:
-    pd.DataFrame: The empty dataframe.
+    - pd.DataFrame: The empty dataframe.
     """
 
     # Define the column names
@@ -29,13 +29,13 @@ def append_to_dataframe(df, frame_number, person_id, keypoints):
     Appends the keypoints, frame number and person identifier to a dataframe.
 
     Parameters:
-    df (pd.DataFrame): The dataframe to append to.
-    frame_number (int): The frame number.
-    person_id (int): The identifier of the person.
-    keypoints (list): The keypoints.
+    - df (pd.DataFrame): The dataframe to append to.
+    - frame_number (int): The frame number.
+    - person_id (int): The identifier of the person.
+    - keypoints (list): The keypoints.
 
     Returns:
-    pd.DataFrame: The dataframe with the keypoints, frame number and person identifier appended.
+    - pd.DataFrame: The dataframe with the keypoints, frame number and person identifier appended.
     """
 
     # Create a dictionary to store the data
@@ -56,16 +56,16 @@ def append_to_dataframe(df, frame_number, person_id, keypoints):
     return df
 
 
-def create_keypoints_dataframe(video_path, keypoints_dir):
+def create_keypoints_dataframe_from_labels(video_path, keypoints_dir):
     """
     Creates a dataframe from the keypoints.
 
     Parameters:
-    video_path (str): The path to the video.
-    keypoints_dir (str): The path to the directory containing the keypoints.
+    - video_path (str): The path to the video.
+    - keypoints_dir (str): The path to the directory containing the keypoints.
 
     Returns:
-    pd.DataFrame: The dataframe.
+    - pd.DataFrame: The dataframe.
     """
 
     # Extract the video name from the video path

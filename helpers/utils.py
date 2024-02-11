@@ -11,10 +11,10 @@ def setup_logging(log_file=False):
     Set up logging.
 
     Parameters:
-    log_file (str): Path to the log file.
+    - log_file (str): Path to the log file.
 
     Returns:
-    None
+    - None
     """
     # Set up logging
     if log_file:
@@ -28,10 +28,10 @@ def make_directory(path):
     Creates a directory.
 
     Parameters:
-    path (str): Path to the directory to create.
+    - path (str): Path to the directory to create.
 
     Returns:
-    str: The path to the created directory.
+    - str: The path to the created directory.
     """
 
     # Create the directory
@@ -46,10 +46,10 @@ def get_video_properties(video_path):
     Extracts the dimensions of the video frames, frame rate and total number of frames.
 
     Parameters:
-    video_path (str): Path to the video file.
+    - video_path (str): Path to the video file.
 
     Returns:
-    tuple: The frame width, frame height, frame rate and total number of frames.
+    - tuple: The frame width, frame height, frame rate and total number of frames.
     """
     # Open the video file
     cap = cv2.VideoCapture(video_path)
@@ -73,11 +73,11 @@ def calculate_time(frame_number, frame_rate):
     Calculates the time in the video given the frame number and the frame rate.
 
     Parameters:
-    frame_number (int): The frame number.
-    frame_rate (float): The frame rate of the video.
+    - frame_number (int): The frame number.
+    - frame_rate (float): The frame rate of the video.
 
     Returns:
-    float: The time in the video.
+    - float: The time in the video.
     """
     return frame_number / frame_rate
 
@@ -87,12 +87,12 @@ def scale_keypoints(keypoints, width, height):
     Scales keypoints to the frame dimensions.
 
     Parameters:
-    keypoints (list): The keypoints to scale.
-    width (int): The width of the frame.
-    height (int): The height of the frame.
+    - keypoints (list): The keypoints to scale.
+    - width (int): The width of the frame.
+    - height (int): The height of the frame.
 
     Returns:
-    list: The scaled keypoints.
+    - list: The scaled keypoints.
     """
 
     # Convert keypoints to a numpy array
@@ -110,10 +110,10 @@ def filter_invalid_keypoints(keypoints):
     Filters out invalid keypoints.
 
     Parameters:
-    keypoints (list): The keypoints to filter.
+    - keypoints (list): The keypoints to filter.
 
     Returns:
-    list: The filtered keypoints.
+    - list: The filtered keypoints.
     """
     # Filter out invalid keypoints
     # Keypoints are invalid if any coordinate is negative or if they are (0,0)
@@ -126,12 +126,12 @@ def calculate_bounding_box(keypoints, frame_shape, margin=50):
     Calculates the minimum and maximum coordinates of the bounding box for a set of keypoints.
 
     Parameters:
-    keypoints (list): The keypoints to calculate the bounding box for.
-    frame_shape (tuple): The dimensions of the frame.
-    margin (int): The margin to add to the bounding box.
+    - keypoints (list): The keypoints to calculate the bounding box for.
+    - frame_shape (tuple): The dimensions of the frame.
+    - margin (int): The margin to add to the bounding box.
 
     Returns:
-    tuple: The minimum and maximum coordinates of the bounding box.
+    - tuple: The minimum and maximum coordinates of the bounding box.
     """
     # Calculate the minimum and maximum coordinates of the bounding box
     x_min, y_min = np.min(keypoints[:, :2], axis=0).astype(int) - margin
@@ -151,10 +151,10 @@ def interpolate_keypoints(df):
     Applies linear interpolation on the frames with missing keypoints.
 
     Parameters:
-    df (pd.DataFrame): The dataframe to interpolate the keypoints for.
+    - df (pd.DataFrame): The dataframe to interpolate the keypoints for.
 
     Returns:
-    pd.DataFrame: The dataframe with the interpolated keypoints.
+    - pd.DataFrame: The dataframe with the interpolated keypoints.
     """
     df = df.reset_index(drop=True)
 
@@ -177,10 +177,10 @@ def sort_df(df):
     Sorts the dataframe by frame_number and person_id.
 
     Parameters:
-    df (pd.DataFrame): The dataframe to sort.
+    - df (pd.DataFrame): The dataframe to sort.
 
     Returns:
-    pd.DataFrame: The sorted dataframe.
+    - pd.DataFrame: The sorted dataframe.
     """
     # Sort the dataframe by frame_number and person_id
     df.sort_values(['frame_number', 'person_id'], inplace=True)
@@ -194,10 +194,10 @@ def interpolate_and_sort_df(df):
     Applies linear interpolation and sorts the dataframe.
 
     Parameters:
-    df (pd.DataFrame): The dataframe to interpolate and sort.
+    - df (pd.DataFrame): The dataframe to interpolate and sort.
 
     Returns:
-    pd.DataFrame: The interpolated and sorted dataframe.
+    - pd.DataFrame: The interpolated and sorted dataframe.
     """
     # Interpolate the dataframe
     df = interpolate_keypoints(df)
@@ -214,10 +214,10 @@ def read_keypoints_from_csv(file_path):
     Reads the keypoints from a file.
 
     Parameters:
-    file_path (str): The path to the file containing the keypoints.
+    - file_path (str): The path to the file containing the keypoints.
 
     Returns:
-    list: The keypoints.
+    - list: The keypoints.
     """
 
     keypoints_file = []
@@ -241,10 +241,10 @@ def create_keypoints_dataframe(keypoints_list):
     Creates a dataframe from the list of keypoints. If there are multiple people in the frame, the keypoints for each person are stored in a separate row. The dataframe is sorted by frame_number and person_id.
 
     Parameters:
-    keypoints_list (list): The list of keypoints.
+    - keypoints_list (list): The list of keypoints.
 
     Returns:
-    pd.DataFrame: The dataframe containing the keypoints.
+    - pd.DataFrame: The dataframe containing the keypoints.
     """
 
     df_list = []
