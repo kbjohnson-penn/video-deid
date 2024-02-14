@@ -376,7 +376,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
             try:
                 # Process the frame
                 process_frame(
-                    frame_copy, row['estimated_x'], row['estimated_y'], blur_faces=False, draw_bbox=True)
+                    frame_copy, row['estimated_x'], row['estimated_y'], blur_faces=True, draw_bbox=False)
             except Exception as e:
                 logging.error(f"Error processing frame {frame_number}: {e}")
                 continue  # Skip to the next iteration of the loop
