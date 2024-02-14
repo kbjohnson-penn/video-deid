@@ -80,7 +80,7 @@ def main():
     # Process the video
     temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     logging.info('Processing video.')
-    process_video(current_run, args.video, keypoints_dataframe,
+    process_video(args.video, keypoints_dataframe,
                   interpolated_keypoints_df, kalman_filtered_keypoints_df_path, temp_file.name, args.progress)
 
     logging.info('Comining audio and video.')
