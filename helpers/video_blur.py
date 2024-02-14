@@ -179,7 +179,7 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     - int: The estimated y-coordinate of the person.
     - dict: The updated dictionary of Kalman filters.
     """
-
+    kf = None
     if person_id not in kalman_filters:
         # Initialize Kalman Filter with the initial position if keypoints are available
         if keypoints and len(keypoints) > 0:
@@ -196,6 +196,9 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
                 kalman_filters[person_id] = kf
     else:
         kf = kalman_filters[person_id]
+
+    if kf is None:
+        return 0, 0, kalman_filters
 
     # Predict the next state with the Kalman Filter
     predicted = kf.predict()
