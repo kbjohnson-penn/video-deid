@@ -74,13 +74,14 @@ def main():
     interpolated_keypoints_df.to_csv(
         f"{current_run}/{video_file_name}_interpolated.csv", index=False)
 
+    # Path to the Kalman filtered keypoints CSV file
+    kalman_filtered_keypoints_df_path = f"{current_run}/{video_file_name}_kalman_filtered.csv"
+
     # Process the video
     temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     logging.info('Processing video.')
-    process_video(args.video, keypoints_dataframe,
-                  interpolated_keypoints_df, temp_file.name, args.progress)
-    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, args.output,
-    #              args.progress)
+    process_video(current_run, args.video, keypoints_dataframe,
+                  interpolated_keypoints_df, kalman_filtered_keypoints_df_path, temp_file.name, args.progress)
 
     logging.info('Comining audio and video.')
 
@@ -89,6 +90,9 @@ def main():
 
     # Delete the temporary file
     os.remove(temp_file.name)
+
+    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, kalman_filtered_keypoints_df_path, args.output,
+    #               args.progress)
 
     logging.info('Finished processing video.')
 
