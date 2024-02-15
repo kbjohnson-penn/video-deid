@@ -179,7 +179,7 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     - int: The estimated y-coordinate of the person.
     - dict: The updated dictionary of Kalman filters.
     """
-
+    kf = None
     if person_id not in kalman_filters:
         # Initialize Kalman Filter with the initial position if keypoints are available
         if keypoints and len(keypoints) > 0:
@@ -194,8 +194,15 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
                 kf.statePost[:2] = initial_position.astype(np.float32)
                 kf.statePost[2:4] = [0, 0]
                 kalman_filters[person_id] = kf
+        logging.info(
+            f"Person {person_id} not in kalman_filters. Initializing Kalman Filter.")
     else:
         kf = kalman_filters[person_id]
+
+    if kf is None:
+        logging.info(
+            f"Kalman filter object for person {person_id} is None. Skipping.")
+        return None, None, kalman_filters
 
     # Predict the next state with the Kalman Filter
     predicted = kf.predict()
@@ -214,7 +221,7 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     return estimated_x, estimated_y, kalman_filters
 
 
-def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps):
+def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps, total_frames):
     """
     Generates Kalman predictions for a dataframe of keypoints.
 
@@ -224,6 +231,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
     - frame_width (int): The width of the frames.
     - frame_height (int): The height of the frames.
     - fps (float): The frame rate.
+    - total_frames (int): The total number of frames.
 
     Returns:
     - pd.DataFrame: The dataframe of Kalman predictions.
@@ -243,8 +251,11 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
                                      == frame_number]
 
         # If there are no rows, break the loop
-        if current_frame.empty:
+        if current_frame.empty and frame_number > total_frames:
             break
+        elif current_frame.empty:
+            frame_number += 1
+            continue
 
         # Iterate through the keypoints dataframe and get the keypoints for the current frame number and person_id
         for index, row in current_frame.iterrows():
@@ -254,6 +265,8 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
             # If are zeros in facial keypoints get the missing keypoints from the interpolated dataframe
             if all(keypoint[:2] == [0, 0] for keypoint in keypoints):
                 # Get the missing keypoints from the interpolated dataframe
+                logging.info(
+                    f"Missing keypoints for frame {frame_number} and person {row['person_id']}. Getting from interpolated dataframe.")
                 keypoints = get_missing_keypoints_from_dataframe(
                     interpolated_keypoints_df, frame_number, row['person_id'])
 
@@ -298,7 +311,7 @@ def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=F
     return frame
 
 
-def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_path, show_progress):
+def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_filtered_keypoints_df_path, output_path, show_progress):
     """
     Processes a video based on the kalman filter predictions and saves the output to a file.
 
@@ -306,6 +319,7 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
     - video_path (str): Path to the input video.
     - keypoints_df (pd.DataFrame): Dataframe containing keypoints.
     - interpolated_keypoints_df (pd.DataFrame): Dataframe containing interpolated keypoints.
+    - kalman_filtered_keypoints_df_path (str): Path to the Kalman filtered keypoints dataframe.
     - output_path (str): Path to the output video.
     - show_progress (bool): Show progress bar.
 
@@ -321,7 +335,8 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, output_pa
     # Generate Kalman predictions
     logging.info('Generating Kalman predictions')
     predicted_df = generate_kalman_predictions(
-        keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps)
+        keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps, total_frames)
+    predicted_df.to_csv(kalman_filtered_keypoints_df_path, index=False)
 
     # Open the video file
     cap = cv2.VideoCapture(video_path)
