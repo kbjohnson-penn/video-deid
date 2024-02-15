@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # Directory containing the videos
-VIDEO_DIR="/home/mopidevi/data/CSI"
-OUTPUT_DIR="/home/mopidevi/data/processed_data"
-LOG_DIR="/home/mopidevi/data/processed_data/log_directory"
+VIDEO_DIR="/home/mopidevi/data/CSI/videos"
+KEYPOINTS_DIR="/home/mopidevi/data/CSI/keypoints"
+OUTPUT_DIR="/home/mopidevi/data/processed_videos"
+LOG_DIR="/home/mopidevi/data/log_directory"
 
 # Name of the Anaconda environment
 ENV_NAME="deid"
@@ -20,6 +21,12 @@ REQUIREMENTS_FILE="$CURRENT_DIR/requirements.txt"
 if [ ! -d "$LOG_DIR" ]; then
     echo "Creating log directory $LOG_DIR"
     mkdir -p "$LOG_DIR"
+fi
+
+# Check if output directory exists, if not, create it
+if [ ! -d "$OUTPUT_DIR" ]; then
+    echo "Creating output directory $OUTPUT_DIR"
+    mkdir -p "$OUTPUT_DIR"
 fi
 
 # Check if the Anaconda environment exists, if not, create it
@@ -39,19 +46,15 @@ pip install -r "$REQUIREMENTS_FILE"
 echo "Processing videos in $VIDEO_DIR"
 # Iterate over all .mp4 files in the directory and its subdirectories
 find "$VIDEO_DIR" -type f -name "*.mp4" | while read -r video_file; do
-    # Replace spaces in the filename with underscores
-    renamed_file=$(echo "$video_file" | tr ' ' '_')
-
-    # Rename the file if necessary
-    if [ "$video_file" != "$renamed_file" ]; then
-        echo "Renaming $video_file to $renamed_file"
-        mv "$video_file" "$renamed_file"
-    fi
-
     # Create a log file for each video file
-    LOG_FILE="$LOG_DIR/$(basename "${renamed_file%.*}").log"
+    LOG_FILE="$LOG_DIR/$(basename "${video_file%.*}").log"
 
-    # Run the Python script on the renamed file and redirect output to the log file
-    echo "Processing $renamed_file" >>"$LOG_FILE"
-    python video-deid.py --video "$renamed_file" --output "$OUTPUT_DIR/$(basename "${renamed_file%.*}").mp4" --log --progress >>"$LOG_FILE" 2>&1
+    # Extract the subdirectory and the base name of the video file
+    base_name=$(basename "${video_file%.*}")
+    echo "Processing $video_file"
+
+    # Run the Python script on the video file and redirect output to the log file
+    echo "Processing $video_file" >>"$LOG_FILE"
+    echo "python video-deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress"
+    python video-deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress >>"$LOG_FILE" 2>&1
 done
