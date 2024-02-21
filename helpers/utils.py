@@ -165,7 +165,7 @@ def interpolate_keypoints(df):
     grouped_df = df.groupby('person_id')
 
     # Apply interpolation to each group and reset the index
-    df = grouped_df.apply(lambda group: group.interpolate(
+    df = grouped_df.apply(lambda group: group.infer_objects(copy=False).interpolate(
         method='linear', limit_direction='both')).reset_index(drop=True)
 
     return df

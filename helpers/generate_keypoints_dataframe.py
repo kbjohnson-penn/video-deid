@@ -50,8 +50,11 @@ def append_to_dataframe(df, frame_number, person_id, keypoints):
     # Convert the data to a DataFrame
     data_df = pd.DataFrame([data])
 
-    # Append the data to the dataframe using pd.concat
-    df = pd.concat([df, data_df], ignore_index=True)
+    # If df is empty, assign data_df to df. Otherwise, concatenate data_df to df.
+    if df.empty:
+        df = data_df
+    else:
+        df = pd.concat([df, data_df], ignore_index=True)
 
     return df
 
