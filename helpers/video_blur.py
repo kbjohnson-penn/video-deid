@@ -91,36 +91,6 @@ def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
         return keypoints
 
 
-def log_keypoints_and_save_frame(frame, frame_number, fps, keypoints, missing_frames_dir):
-    """
-    Logs a warning message and saves the frame to a file if there are no facial keypoints.
-
-    Parameters:
-    - frame (np.array): The frame to save.
-    - frame_number (int): The frame number.
-    - fps (float): The frame rate.
-    - keypoints (list): The keypoints.
-    - missing_frames_dir (str): The directory to save the frame to.
-
-    Returns:
-    - None
-    """
-
-    time_in_video = calculate_time(frame_number, fps)
-    # Log a warning message
-    logging.warning(
-        f"No facial keypoints found for frame {frame_number} at time {time_in_video} seconds. Keypoints: {keypoints}")
-
-    # Define the output file name
-    output_file_name = f"frame_{frame_number}.jpg"
-
-    # Define the output file path
-    output_file_path = os.path.join(missing_frames_dir, output_file_name)
-
-    # Save the frame to the output file
-    cv2.imwrite(output_file_path, frame)
-
-
 def initialize_kalman_filter(fps):
     """
     Initializes a Kalman filter.
@@ -162,7 +132,7 @@ def initialize_kalman_filter(fps):
     return kf
 
 
-def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width, frame_height, fps):
+def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width, frame_height, frame_number, fps):
     """
     Applies a Kalman filter to a set of keypoints and predicts the next state.
 
@@ -172,6 +142,7 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     - person_id (int): The identifier of the person.
     - frame_width (int): The width of the frame.
     - frame_height (int): The height of the frame.
+    - frame_number (int): The frame number.
     - fps (float): The frame rate.
 
     Returns:
@@ -195,13 +166,13 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
                 kf.statePost[2:4] = [0, 0]
                 kalman_filters[person_id] = kf
         logging.info(
-            f"Person {person_id} not in kalman_filters. Initializing Kalman Filter.")
+            f"Person {person_id} not in kalman_filters at time: {calculate_time(frame_number, fps)} seconds. Initializing Kalman Filter.")
     else:
         kf = kalman_filters[person_id]
 
     if kf is None:
         logging.info(
-            f"Kalman filter object for person {person_id} is None. Skipping.")
+            f"Kalman filter object for person {person_id} is None at time: {calculate_time(frame_number, fps)} seconds. Skipping.")
         return None, None, kalman_filters
 
     # Predict the next state with the Kalman Filter
@@ -266,18 +237,22 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
             if all(keypoint[:2] == [0, 0] for keypoint in keypoints):
                 # Get the missing keypoints from the interpolated dataframe
                 logging.info(
-                    f"Missing keypoints for frame {frame_number} and person {row['person_id']}. Getting from interpolated dataframe.")
+                    f"Missing keypoints for frame {frame_number} and person {row['person_id']} at time: {calculate_time(frame_number, fps)} seconds. Getting from interpolated dataframe.")
                 keypoints = get_missing_keypoints_from_dataframe(
                     interpolated_keypoints_df, frame_number, row['person_id'])
 
             # Get the estimated x and y coordinates and update the Kalman filters
             estimated_x, estimated_y, kalman_filters = kalman_filter_and_predict(
-                keypoints, kalman_filters, row['person_id'], frame_width, frame_height, fps)
+                keypoints, kalman_filters, row['person_id'], frame_width, frame_height, frame_number, fps)
 
             # Create a new DataFrame for the current row and concatenate it with the result DataFrame
             current_df = pd.DataFrame([{'frame_number': frame_number, 'person_id': row['person_id'],
                                       'estimated_x': estimated_x, 'estimated_y': estimated_y}])
-            result_df = pd.concat([result_df, current_df], ignore_index=True)
+            if result_df.empty:
+                result_df = current_df
+            else:
+                result_df = pd.concat(
+                    [result_df, current_df], ignore_index=True)
 
         frame_number += 1
 
