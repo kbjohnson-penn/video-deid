@@ -62,5 +62,5 @@ find "$VIDEO_DIR" -type f -name "*.mp4" | while read -r video_file; do
     # Run the Python script on the video file and redirect output to the log file
     echo "Processing $video_file" >>"$LOG_FILE"
     echo "python video-deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress"
-    python video-deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress >>"$LOG_FILE" 2>&1
+    python video_deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress >>"$LOG_FILE" 2>&1
 done
