@@ -49,11 +49,10 @@ pip install -r requirements.txt
 This script processes a video and applies a blur to faces detected in the video. Here's how you can use it:
 
 ```bash
-python video-deid.py --video <video_path> --output <output_path> [--log] [--save_frames] [--show_progress]
+python video-deid.py --video <video_path> --output <output_path> [--log] [--show_progress]
 ```
 
 - `--video` argument is the path to the input video.
 - `--output` argument is the path to the output video.
 - `--log` argument enables logging.
-- `--save_frames` argument saves frames that don't have keypoints.
 - `--show_progress` argument shows a progress bar.
