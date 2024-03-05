@@ -53,6 +53,12 @@ find "$VIDEO_DIR" -type f -name "*.mp4" | while read -r video_file; do
     base_name=$(basename "${video_file%.*}")
     echo "Processing $video_file"
 
+    # Check if keypoints directory exists, if not, skip to the next video
+    if [ ! -d "$KEYPOINTS_DIR/$base_name/labels" ]; then
+        echo "Key points for $video_file are missing, skipping to next video"
+        continue
+    fi
+
     # Run the Python script on the video file and redirect output to the log file
     echo "Processing $video_file" >>"$LOG_FILE"
     echo "python video-deid.py --video "$video_file" --keypoints "$KEYPOINTS_DIR/$base_name/labels" --output "$OUTPUT_DIR/$base_name.mp4" --log --progress"
