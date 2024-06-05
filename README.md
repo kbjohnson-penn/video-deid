@@ -18,7 +18,7 @@ Next, navigate to the project directory:
 cd video-deid
 ```
 
-Create a new Python virtual environment:
+#### Create a new Python virtual environment:
 
 ```bash
 python3 -m venv env
