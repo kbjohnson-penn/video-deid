@@ -1,108 +1,107 @@
 import os
 import argparse
-import time
 import logging
 import tempfile
-from helpers.utils import setup_logging, make_directory, interpolate_and_sort_df
+from helpers.utils import create_run_directory_and_paths, setup_logging, load_dataframe_from_csv, interpolate_and_sort_df
 from helpers.video_blur import process_video
 from helpers.audio import combine_audio_video
-from helpers.generate_keypoints_dataframe import create_keypoints_dataframe_from_labels
 
 
-logging.getLogger().setLevel(logging.ERROR)
-
-
-def main():
-    """"
-    Main function. Parses the arguments and processes the video.
-
-    Returns:
-    - None
-    """
-
-    # Create an argument parser
+def parse_arguments():
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description='Process video and apply blur to faces.')
     parser.add_argument('--video', required=True,
                         help='Path to the input video.')
-    parser.add_argument('--keypoints', required=True,
-                        help='Path to the keypoints labels.')
+    parser.add_argument('--keypoints_csv', required=True,
+                        help='Path to the keypoints CSV file.')
     parser.add_argument('--output', required=True,
                         help='Path to the output video.')
     parser.add_argument('--log', action='store_true', help='Enable logging.')
-    parser.add_argument("--progress",
-                        action="store_true", help="Show progress bar")
+    parser.add_argument("--progress", action="store_true",
+                        help="Show progress bar")
+    return parser.parse_args()
 
-    # Parse the arguments
-    args = parser.parse_args()
 
-    # Extract the video file name (without extension) from the video path
-    video_file_name = os.path.splitext(os.path.basename(args.video))[0]
+def validate_inputs(video_path, keypoints_csv_path):
+    """Validate input file paths."""
+    try:
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(
+                f"Video file '{video_path}' does not exist.")
+        if not os.path.exists(keypoints_csv_path):
+            raise FileNotFoundError(
+                f"Keypoints CSV file '{keypoints_csv_path}' does not exist.")
+        return True
+    except FileNotFoundError as e:
+        logging.error(e)
+        return False
 
-    # Current time stamp
-    time_stamp = int(time.time())
 
-    # Current run directory
-    current_run = f"runs/{video_file_name}_{time_stamp}"
+def load_keypoints(keypoints_csv):
+    """Load keypoints dataframe from CSV."""
+    logging.info('Loading keypoints dataframe from CSV.')
+    return load_dataframe_from_csv(keypoints_csv)
 
-    # Create the output directories if they don't exist
-    if args.log:
-        log_files_dir = make_directory(f"{current_run}/logs")
-        setup_logging(
-            f"{log_files_dir}/{video_file_name}_{time_stamp}.log")
 
-    # Create the current directory if it doesn't exist
-    make_directory(current_run)
-    logging.info('Created current run directory.')
-
-    # Create the keypoints dataframe
-    logging.info('Creating keypoints dataframe.')
-    keypoints_dataframe = create_keypoints_dataframe_from_labels(
-        args.video, args.keypoints)
-
-    # Save the keypoints dataframe to a CSV file
-    logging.info('Saving keypoints dataframe to CSV.')
-    keypoints_dataframe.to_csv(
-        f"{current_run}/{video_file_name}_dataframe.csv", index=False)
-
-    # Interpolate and sort the dataframe
+def interpolate_keypoints(keypoints_dataframe, output_path):
+    """Interpolate and sort the keypoints dataframe and save to CSV."""
     logging.info('Interpolating and sorting dataframe.')
     interpolated_keypoints_df = interpolate_and_sort_df(keypoints_dataframe)
-
-    # Save the interpolated dataframe to a CSV file
+    interpolated_keypoints_df.to_csv(output_path, index=False)
     logging.info('Finished interpolating and sorting dataframe.')
-    interpolated_keypoints_df.to_csv(
-        f"{current_run}/{video_file_name}_interpolated.csv", index=False)
+    return interpolated_keypoints_df
 
-    # Path to the Kalman filtered keypoints CSV file
-    kalman_filtered_keypoints_df_path = f"{current_run}/{video_file_name}_kalman_filtered.csv"
 
-    # Process the video
-    temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    logging.info('Processing video.')
-    process_video(args.video, keypoints_dataframe,
-                  interpolated_keypoints_df, kalman_filtered_keypoints_df_path, temp_file.name, args.progress)
+def process_video_with_audio(args, keypoints_dataframe, interpolated_keypoints_df, kalman_filtered_csv_path):
+    """Process the video and combine audio."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        try:
+            logging.info('Processing video.')
+            process_video(args.video, keypoints_dataframe, interpolated_keypoints_df,
+                          kalman_filtered_csv_path, temp_file.name, args.progress)
+            logging.info('Combining audio and video.')
+            combine_audio_video(args.video, temp_file.name, args.output)
+        except Exception as e:
+            logging.error(f"An error occurred during video processing: {e}")
+        finally:
+            if os.path.exists(temp_file.name):
+                os.remove(temp_file.name)
+                logging.info('Temporary video file removed.')
 
-    logging.info('Comining audio and video.')
 
-    # Combine the audio and video
-    combine_audio_video(args.video, temp_file.name,  args.output)
+def main():
+    """Main function. Parses the arguments and processes the video."""
 
-    # Delete the temporary file
-    os.remove(temp_file.name)
+    args = parse_arguments()
 
-    # process_video(args.video, keypoints_dataframe, interpolated_keypoints_df, kalman_filtered_keypoints_df_path, args.output,
-    #               args.progress)
+    # Pre-validate inputs before proceeding
+    if not validate_inputs(args.video, args.keypoints_csv):
+        return
+
+    # Set up paths and logging
+    paths = create_run_directory_and_paths(args.video)
+    setup_logging(paths['log_file'] if args.log else None)
+
+    # Load and interpolate keypoints
+    keypoints_dataframe = load_keypoints(args.keypoints_csv)
+    interpolated_keypoints_df = interpolate_keypoints(
+        keypoints_dataframe, paths['interpolated_csv'])
+
+    # Process the video and combine audio
+    process_video_with_audio(args, keypoints_dataframe,
+                             interpolated_keypoints_df, paths['kalman_filtered_csv'])
 
     logging.info('Finished processing video.')
 
 
 if __name__ == '__main__':
-    """
-    Entry point.
-
-    Returns:
-    - None
-    """
-
-    main()
+    try:
+        main()
+    except FileNotFoundError as e:
+        logging.error(f"File not found: {e}")
+    except ValueError as e:
+        logging.error(f"Value error: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during processing: {e}")
+        raise  # Optionally re-raise to halt execution if needed
