@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import logging
 import cv2
-from helpers.utils import get_video_properties, calculate_time, filter_invalid_keypoints, calculate_bounding_box
+from helpers.utils import get_video_properties, calculate_time, filter_invalid_keypoints, calculate_bounding_box, create_progress_bar
 
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
@@ -295,8 +295,7 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
     - None
     """
     frame_number = 1
-    progress_bar = tqdm(total=total_frames, desc="Processing video",
-                        ncols=100) if show_progress else None
+    progress_bar =  create_progress_bar(total_frames, "Processing and blurring video", show_progress)
 
     while cap.isOpened():
         ret, frame = cap.read()
