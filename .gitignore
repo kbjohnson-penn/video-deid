@@ -21,3 +21,7 @@ keypoints/
 videos/
 data/
 models
+*.err
+*.out
+*.pt
+helpers/yolo11x-pose.pt

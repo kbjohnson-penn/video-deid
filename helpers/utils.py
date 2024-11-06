@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import time
 import logging
+from tqdm import tqdm
 
 
 def create_run_directory_and_paths(video_path):
@@ -25,6 +26,7 @@ def create_run_directory_and_paths(video_path):
     logging.info(f"Created current run directory: {current_run}")
 
     paths = {
+        'run_directory': current_run,
         'log_file': f"{current_run}/{video_file_name}_{time_stamp}.log",
         'interpolated_csv': f"{current_run}/{video_file_name}_interpolated.csv",
         'kalman_filtered_csv': f"{current_run}/{video_file_name}_kalman_filtered.csv"
@@ -204,3 +206,8 @@ def load_dataframe_from_csv(csv_path):
         except Exception as e:
             logging.error(f"Failed to load with inferred dtypes: {e}")
             raise
+
+
+def create_progress_bar(total, desc, show_progress):
+    """Creates a progress bar using the tqdm library."""
+    return tqdm(total=total, desc=desc, ncols=100) if show_progress else None
