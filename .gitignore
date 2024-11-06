@@ -23,4 +23,4 @@ data/
 models
 *.err
 *.out
-*.pt
+*.pthelpers/yolo11x-pose.pt
