@@ -21,3 +21,5 @@ keypoints/
 videos/
 data/
 models
+*.err
+*.out
