@@ -1,6 +1,6 @@
 # Video De-Identification
 
-This project is a Python script designed to process videos by blurring detected faces, thereby anonymizing individuals in the footage. It leverages facial keypoints to locate faces within each video frame and subsequently applies a blur effect. The application offers features such as saving keypoints as CSV, logging of processing details, saving frames where keypoints were not detected for further analysis, and a progress bar for visual tracking of the processing progress.
+This project is a Python script designed to process videos by blurring detected faces, thereby anonymizing individuals in the footage. It leverages body and facial keypoints to locate people within each video frame and subsequently applies a blur effect. The application offers features such as extracting keypoints to CSV, interpolation for missing frames, and showing progress during processing.
 
 This tool is particularly beneficial for those seeking to maintain privacy in video data, as it ensures the protection of individual identities.
 
@@ -44,15 +44,48 @@ Finally, install the project dependencies:
 pip install -r requirements.txt
 ```
 
+You'll also need to download the YOLO pose detection model. Place `yolo11x-pose.pt` in the `helpers` directory, or specify a custom path with the `--model` argument.
+
 ## Usage
 
-This script processes a video and applies a blur to faces detected in the video. Here's how you can use it:
+The script has two main operation modes:
+
+### 1. Extract Keypoints
+
+First, extract keypoints from a video:
 
 ```bash
-python video-deid.py --video <video_path> --output <output_path> [--log] [--show_progress]
+python video_deid.py --operation_type extract --video <video_path> --keypoints_csv <output_csv_path> [--model <model_path>] [--log] [--progress]
 ```
 
-- `--video` argument is the path to the input video.
-- `--output` argument is the path to the output video.
-- `--log` argument enables logging.
-- `--show_progress` argument shows a progress bar.
+### 2. De-identify Videos
+
+After extracting keypoints, you can de-identify the video in two ways:
+
+#### Face Blur Only
+
+Blur only the faces in the video:
+
+```bash
+python video_deid.py --operation_type deid --video <video_path> --keypoints_csv <keypoints_csv> --output <output_path> [--model <model_path>] [--log] [--progress]
+```
+
+#### Complete De-identification
+
+Completely blur the entire video and overlay skeleton keypoints:
+
+```bash
+python video_deid.py --operation_type deid --video <video_path> --keypoints_csv <keypoints_csv> --output <output_path> --complete_deid [--log] [--progress]
+```
+
+### Parameters
+
+- `--operation_type` - Required, specify `extract` to extract keypoints or `deid` to de-identify video
+- `--video` - Required, path to the input video file
+- `--keypoints_csv` - Path to save or load keypoints CSV (required for both operations)
+- `--output` - Path to the output de-identified video (required for deid operation)
+- `--model` - Optional path to the YOLO pose model file
+- `--complete_deid` - Enable complete de-identification (blur entire video and show skeleton)
+- `--notemp` - Do not use temporary files, save all files in the runs directory
+- `--log` - Enable logging
+- `--progress` - Show processing progress bar

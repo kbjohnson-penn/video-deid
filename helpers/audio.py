@@ -1,7 +1,7 @@
 import subprocess
 import tempfile
-import os
 import logging
+from pathlib import Path
 
 
 def combine_audio_video(original_video_path, processed_video_path, output_path):
@@ -9,13 +9,21 @@ def combine_audio_video(original_video_path, processed_video_path, output_path):
     Combines the audio of the original video with the processed video using ffmpeg.
 
     Parameters:
-    - original_video_path (str): The path to the original video.
-    - processed_video_path (str): The path to the processed video.
-    - output_path (str): The path to save the output video.
+    - original_video_path (str or Path): The path to the original video.
+    - processed_video_path (str or Path): The path to the processed video.
+    - output_path (str or Path): The path to save the output video.
 
     Returns:
     - None
     """
+    # Convert paths to strings for subprocess
+    original_video_path = str(Path(original_video_path))
+    processed_video_path = str(Path(processed_video_path))
+    output_path = str(Path(output_path))
+    
+    # Ensure the output directory exists
+    output_dir = Path(output_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Create a temporary file for the audio
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio_file:
@@ -34,7 +42,8 @@ def combine_audio_video(original_video_path, processed_video_path, output_path):
         subprocess.run(command_extract_audio, check=True)
 
         # Check if the audio file is valid and not empty
-        if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) == 0:
+        temp_audio_file = Path(temp_audio_path)
+        if temp_audio_file.exists() and temp_audio_file.stat().st_size == 0:
             logging.error("Extracted audio file is empty.")
             raise ValueError(
                 "The audio extraction failed; extracted audio file is empty.")
@@ -63,5 +72,6 @@ def combine_audio_video(original_video_path, processed_video_path, output_path):
     finally:
         # Remove the temporary audio file
         logging.info('Removing temporary audio file.')
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
+        temp_audio_path = Path(temp_audio_path)
+        if temp_audio_path.exists():
+            temp_audio_path.unlink()

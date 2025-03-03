@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import time
-import logging
+from pathlib import Path
 from tqdm import tqdm
 
 
@@ -14,22 +14,28 @@ def create_run_directory_and_paths(video_path):
     and returns the paths for the run directory, log file, interpolated CSV, and Kalman filtered CSV.
 
     Parameters:
-    - video_path (str): Path to the input video.
+    - video_path (str or Path): Path to the input video.
 
     Returns:
     - dict: Paths for the run directory, log file, interpolated CSV, and Kalman filtered CSV.
     """
-    video_file_name = os.path.splitext(os.path.basename(video_path))[0]
+    video_path = Path(video_path)
+    video_file_name = video_path.stem
     time_stamp = int(time.time())
-    current_run = f"runs/{video_file_name}_{time_stamp}"
-    os.makedirs(current_run, exist_ok=True)
+    
+    # Ensure the runs directory exists
+    runs_dir = Path("runs")
+    runs_dir.mkdir(exist_ok=True)
+    
+    current_run = runs_dir / f"{video_file_name}_{time_stamp}"
+    current_run.mkdir(exist_ok=True)
     logging.info(f"Created current run directory: {current_run}")
 
     paths = {
-        'run_directory': current_run,
-        'log_file': f"{current_run}/{video_file_name}_{time_stamp}.log",
-        'interpolated_csv': f"{current_run}/{video_file_name}_interpolated.csv",
-        'kalman_filtered_csv': f"{current_run}/{video_file_name}_kalman_filtered.csv"
+        'run_directory': str(current_run),
+        'log_file': str(current_run / f"{video_file_name}_{time_stamp}.log"),
+        'interpolated_csv': str(current_run / f"{video_file_name}_interpolated.csv"),
+        'kalman_filtered_csv': str(current_run / f"{video_file_name}_kalman_filtered.csv")
     }
     return paths
 
@@ -69,17 +75,18 @@ def get_video_properties(video_path):
     Extracts the dimensions of the video frames, frame rate and total number of frames.
 
     Parameters:
-    - video_path (str): Path to the video file.
+    - video_path (str or Path): Path to the video file.
 
     Returns:
     - tuple: The frame width, frame height, frame rate, and total number of frames.
     """
+    video_path = str(video_path)  # Convert Path objects to string for OpenCV
     cap = cv2.VideoCapture(video_path)
     try:
         if not cap.isOpened():
             logging.error(
                 f"Cannot open video: {video_path}. Please check if the path is correct or if the file is corrupted.")
-            raise IOError("Cannot open video")
+            raise IOError(f"Cannot open video: {video_path}")
 
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

@@ -1,8 +1,8 @@
-from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import logging
 import cv2
+from pathlib import Path
 from helpers.utils import get_video_properties, calculate_time, filter_invalid_keypoints, calculate_bounding_box, create_progress_bar
 
 
@@ -178,57 +178,112 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
 def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps, total_frames):
     """
     Generates Kalman predictions for all frames, including those without keypoints, to maintain synchronization.
+    
+    Parameters:
+    - keypoints_df: DataFrame with original keypoints data
+    - interpolated_keypoints_df: DataFrame with interpolated keypoints for missing frames
+    - frame_width, frame_height: Video frame dimensions
+    - fps: Frames per second of the video
+    - total_frames: Total number of frames in video
+    
+    Returns:
+    - DataFrame with Kalman filter predictions for each frame/person
     """
     # Initialize a dictionary to store the Kalman filters
     kalman_filters = {}
 
-    # Group the DataFrame by frame number to optimize frame access
+    # Pre-compute grouped DataFrames - this is a performance optimization
+    # as we avoid grouping operations inside the loop
     grouped_keypoints_df = keypoints_df.groupby('frame_number')
     grouped_interpolated_df = interpolated_keypoints_df.groupby('frame_number')
+    
+    # Get the set of frame numbers that exist in the input data for faster lookups
+    keypoints_frames = set(grouped_keypoints_df.groups.keys())
+    interpolated_frames = set(grouped_interpolated_df.groups.keys())
 
-    # List to hold results and avoid repeated DataFrame concatenation
+    # Pre-allocate memory for results
     results = []
+    results_capacity = total_frames * (len(keypoints_df['person_id'].unique()) or 1)
+    results = [None] * results_capacity
+    result_index = 0
 
-    # Iterate over each frame
+    # Process each frame in the video
     for frame_number in range(1, total_frames + 1):
-        # Get the rows for the current frame number
-        current_frame = grouped_keypoints_df.get_group(
-            frame_number) if frame_number in grouped_keypoints_df.groups else pd.DataFrame()
-
-        if current_frame.empty:
-            # If there are no keypoints, still add a placeholder with None values for estimated_x and estimated_y
-            results.append({'frame_number': frame_number, 'person_id': None,
-                           'estimated_x': None, 'estimated_y': None})
-            continue
-
-        # Iterate through the keypoints dataframe and get the keypoints for the current frame number and person_id
-        for _, row in current_frame.iterrows():
-            # Extract the facial keypoints from the row
-            keypoints = [[row[f'x_{i}'], row[f'y_{i}'],
-                          row[f'c_{i}']] for i in range(5)]
-
-            # If all keypoints are zeros, retrieve from interpolated dataframe
-            if all(keypoint[:2] == [0, 0] for keypoint in keypoints) and frame_number in grouped_interpolated_df.groups:
-                logging.info(
-                    f"Missing keypoints for frame {frame_number} and person {row['person_id']} at time: {calculate_time(frame_number, fps)} seconds. Using interpolated dataframe."
+        # Check if frame has keypoints data with fast set lookup
+        if frame_number in keypoints_frames:
+            current_frame = grouped_keypoints_df.get_group(frame_number)
+            
+            # Process each person in this frame
+            for _, row in current_frame.iterrows():
+                person_id = row['person_id']
+                
+                # Get keypoints more efficiently - extract facial keypoints (first 5)
+                # This avoids constructing list comprehension for each row
+                keypoints = []
+                all_zeros = True
+                
+                for i in range(5):
+                    x, y, c = row[f'x_{i}'], row[f'y_{i}'], row[f'c_{i}']
+                    keypoints.append([x, y, c])
+                    if not (x == 0 and y == 0):
+                        all_zeros = False
+                
+                # Use interpolated data if original keypoints are all zeros
+                if all_zeros and frame_number in interpolated_frames:
+                    interpolated_row = grouped_interpolated_df.get_group(frame_number)
+                    interpolated_keypoints = get_missing_keypoints_from_dataframe(
+                        interpolated_row, frame_number, person_id)
+                    if interpolated_keypoints:
+                        keypoints = interpolated_keypoints
+                
+                # Get Kalman predictions
+                estimated_x, estimated_y, kalman_filters = kalman_filter_and_predict(
+                    keypoints, kalman_filters, person_id, frame_width, frame_height, frame_number, fps
                 )
-                interpolated_row = grouped_interpolated_df.get_group(
-                    frame_number)
-                keypoints = get_missing_keypoints_from_dataframe(
-                    interpolated_row, frame_number, row['person_id'])
+                
+                # Store result
+                if result_index < results_capacity:
+                    results[result_index] = {
+                        'frame_number': frame_number,
+                        'person_id': person_id, 
+                        'estimated_x': estimated_x, 
+                        'estimated_y': estimated_y
+                    }
+                    result_index += 1
+                else:
+                    # If we exceed pre-allocated capacity, append
+                    results.append({
+                        'frame_number': frame_number,
+                        'person_id': person_id, 
+                        'estimated_x': estimated_x, 
+                        'estimated_y': estimated_y
+                    })
+        else:
+            # For frames with no keypoints data, add a placeholder row
+            if result_index < results_capacity:
+                results[result_index] = {
+                    'frame_number': frame_number,
+                    'person_id': None,
+                    'estimated_x': None, 
+                    'estimated_y': None
+                }
+                result_index += 1
+            else:
+                results.append({
+                    'frame_number': frame_number,
+                    'person_id': None,
+                    'estimated_x': None, 
+                    'estimated_y': None
+                })
 
-            # Predict the next state
-            estimated_x, estimated_y, kalman_filters = kalman_filter_and_predict(
-                keypoints, kalman_filters, row['person_id'], frame_width, frame_height, frame_number, fps
-            )
-
-            # Append results to the list
-            results.append({'frame_number': frame_number,
-                            'person_id': row['person_id'], 'estimated_x': estimated_x, 'estimated_y': estimated_y})
-
-    # Convert results to DataFrame after processing all frames
+    # Remove unused pre-allocated entries and create DataFrame
+    results = [r for r in results if r is not None]
     result_df = pd.DataFrame(results)
-
+    
+    # Log summary statistics
+    person_count = len(result_df['person_id'].dropna().unique())
+    logging.info(f"Generated Kalman predictions for {person_count} people across {total_frames} frames")
+    
     return result_df
 
 
@@ -268,16 +323,26 @@ def initialize_video_writer(video_path, output_path, fps):
     Initializes a video writer object.
 
     Parameters:
-    - video_path (str): Path to the input video.
-    - output_path (str): Path to the output video.
+    - video_path (str or Path): Path to the input video.
+    - output_path (str or Path): Path to the output video.
     - fps (float): Frame rate of the video.
 
     Returns:
     - cv2.VideoWriter: Video writer object.
     """
+    # Convert to Path objects
+    video_path = Path(video_path)
+    output_path = Path(output_path)
+    
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get video properties and initialize writer
     frame_width, frame_height, _, _ = get_video_properties(video_path)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    return cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    
+    # Convert back to string for OpenCV
+    return cv2.VideoWriter(str(output_path), fourcc, fps, (frame_width, frame_height))
 
 
 def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
@@ -294,42 +359,72 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
     Returns:
     - None
     """
+    # Pre-compute index for faster frame lookup
+    frame_data_lookup = {}
+    for frame_num, group in predicted_df.groupby('frame_number'):
+        valid_rows = group[pd.notna(group['estimated_x']) & pd.notna(group['estimated_y'])]
+        if not valid_rows.empty:
+            frame_data_lookup[frame_num] = valid_rows
+    
+    # Create progress bar
+    progress_bar = create_progress_bar(total_frames, "Processing and blurring video", show_progress)
+    
+    # Track processed frames for statistics
+    processed_count = 0
     frame_number = 1
-    progress_bar =  create_progress_bar(total_frames, "Processing and blurring video", show_progress)
-
+    
+    # Process each frame
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        current_frame_data = predicted_df[predicted_df['frame_number']
-                                          == frame_number]
-
-        if not current_frame_data.empty:
-            frame_copy = frame.copy()
-            for _, row in current_frame_data.iterrows():
-                if pd.notna(row['estimated_x']) and pd.notna(row['estimated_y']):
+        # Check if we need to process this frame
+        if frame_number in frame_data_lookup:
+            current_frame_data = frame_data_lookup[frame_number]
+            
+            # Only make a copy if we're actually going to modify the frame
+            if len(current_frame_data) > 0:
+                frame_copy = frame.copy()
+                
+                # Process all detections in this frame
+                for _, row in current_frame_data.iterrows():
                     try:
-                        logging.info(
-                            f"Processing frame {frame_number} for person_id {row['person_id']}")
                         frame_copy = process_frame(
-                            frame_copy, row['estimated_x'], row['estimated_y'], blur_faces=True, draw_bbox=False
+                            frame_copy, 
+                            int(row['estimated_x']), 
+                            int(row['estimated_y']), 
+                            blur_faces=True, 
+                            draw_bbox=False
                         )
+                        processed_count += 1
                     except Exception as e:
-                        logging.error(
-                            f"Error processing frame {frame_number}: {e}")
+                        logging.error(f"Error processing frame {frame_number}, person {row['person_id']}: {e}")
                         continue
-
-            out.write(frame_copy)
+                
+                # Write processed frame
+                out.write(frame_copy)
+            else:
+                out.write(frame)
         else:
+            # No processing needed for this frame
             out.write(frame)
 
+        # Update progress and counter
         frame_number += 1
         if show_progress:
             progress_bar.update(1)
+            
+        # Periodically log progress for long videos
+        if frame_number % 500 == 0:
+            logging.info(f"Processed {frame_number}/{total_frames} frames ({frame_number/total_frames*100:.1f}%)")
 
+    # Cleanup
     if show_progress:
         progress_bar.close()
+        
+    # Log final stats
+    logging.info(f"Video processing complete: {processed_count} faces blurred across {frame_number-1} frames")
 
 
 def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_filtered_keypoints_df_path, output_path, show_progress):
@@ -337,29 +432,42 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
     Processes a video based on the kalman filter predictions and saves the output to a file.
 
     Parameters:
-    - video_path (str): Path to the input video.
+    - video_path (str or Path): Path to the input video.
     - keypoints_df (pd.DataFrame): Dataframe containing keypoints.
     - interpolated_keypoints_df (pd.DataFrame): Dataframe containing interpolated keypoints.
-    - kalman_filtered_keypoints_df_path (str): Path to the Kalman filtered keypoints dataframe.
-    - output_path (str): Path to the output video.
+    - kalman_filtered_keypoints_df_path (str or Path): Path to the Kalman filtered keypoints dataframe.
+    - output_path (str or Path): Path to the output video.
     - show_progress (bool): Show progress bar.
 
     Returns:
     - None
     """
+    # Convert to Path objects
+    video_path = Path(video_path)
+    kalman_filtered_keypoints_df_path = Path(kalman_filtered_keypoints_df_path)
+    output_path = Path(output_path)
+    
+    # Ensure output directories exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    kalman_filtered_keypoints_df_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    cap = None
+    out = None
+    
     try:
-        frame_width, frame_height, fps, total_frames = get_video_properties(
-            video_path)
-        logging.info('Getting video properties.')
+        # Get video properties
+        frame_width, frame_height, fps, total_frames = get_video_properties(video_path)
+        logging.info(f'Video properties: {frame_width}x{frame_height}, {fps} fps, {total_frames} frames')
 
         # Generate Kalman predictions
         logging.info('Generating Kalman predictions')
         predicted_df = generate_kalman_predictions(
             keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps, total_frames)
-        predicted_df.to_csv(kalman_filtered_keypoints_df_path, index=False)
+        predicted_df.to_csv(str(kalman_filtered_keypoints_df_path), index=False)
+        logging.info(f'Kalman predictions saved to: {kalman_filtered_keypoints_df_path}')
 
         # Initialize video capture and writer
-        cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise IOError(f"Cannot open video file: {video_path}")
 
@@ -368,17 +476,20 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
 
         # Process frames
         process_frame_loop(cap, predicted_df, out, show_progress, total_frames)
+        logging.info(f'Video processing complete. Output saved to: {output_path}')
 
     except FileNotFoundError as e:
         logging.error(f"File not found: {e}")
+        raise
     except IOError as e:
         logging.error(f"IO error occurred: {e}")
+        raise
     except Exception as e:
         logging.error(f"Unexpected error occurred in process_video: {e}")
-
+        raise
     finally:
-        if cap:
+        if cap is not None:
             cap.release()
-        if out:
+        if out is not None:
             out.release()
         cv2.destroyAllWindows()
