@@ -118,21 +118,26 @@ def deidentify_video(args, keypoints_dataframe, output_video_path):
 
 
 def get_model_path(custom_path=None):
-    """Get the path to the YOLO model file."""
-    # Check custom path if provided
+    """
+    Get the path to the YOLO model.
+    
+    If custom_path is provided, uses that path.
+    If no custom_path is provided, uses the default model name.
+    YOLO will automatically download the model if it doesn't exist.
+    
+    Parameters:
+    - custom_path: Optional custom path to the YOLO model
+    
+    Returns:
+    - Path to the model (either custom or default)
+    """
+    # If custom path is provided, use it
     if custom_path:
-        custom_path = Path(custom_path)
-        if custom_path.exists():
-            return str(custom_path)
+        return str(Path(custom_path))
     
-    # Try to find model in the helpers directory
-    script_dir = Path(__file__).parent
-    default_path = script_dir / "helpers" / "yolo11x-pose.pt"
-    
-    if default_path.exists():
-        return str(default_path)
-    else:
-        raise FileNotFoundError(f"YOLO model not found. Please provide path with --model or place yolo11x-pose.pt in the helpers directory.")
+    # No custom path, use default model name
+    # YOLO will automatically download this if it doesn't exist
+    return "yolo11x-pose.pt"
 
 
 def cleanup_temp_files(temp_file_path):
