@@ -91,7 +91,10 @@ def blur_video(video_source, temp_blurred_video_path, show_progress=False):
             out.release()
         if progress_bar:
             progress_bar.close()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception as e:
+            logging.debug(f"Could not destroy OpenCV windows: {e}")
 
 
 def draw_annotations(frame, keypoints):
@@ -221,4 +224,7 @@ def process_blurred_video(blurred_video_source, df, output_video_path, show_prog
             out.release()
         if progress_bar:
             progress_bar.close()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception as e:
+            logging.debug(f"Could not destroy OpenCV windows: {e}")

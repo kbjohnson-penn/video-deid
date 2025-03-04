@@ -21,6 +21,11 @@ def combine_audio_video(original_video_path, processed_video_path, output_path):
     processed_video_path = str(Path(processed_video_path))
     output_path = str(Path(output_path))
     
+    # Check if processed video exists
+    if not Path(processed_video_path).exists():
+        logging.error(f"Processed video file not found: {processed_video_path}")
+        raise FileNotFoundError(f"Processed video file not found: {processed_video_path}")
+    
     # Ensure the output directory exists
     output_dir = Path(output_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)

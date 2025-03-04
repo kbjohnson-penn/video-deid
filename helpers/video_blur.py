@@ -492,4 +492,8 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
             cap.release()
         if out is not None:
             out.release()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception as e:
+            logging.debug(f"Could not destroy OpenCV windows: {e}")
+            # Continue processing even if window destruction fails
