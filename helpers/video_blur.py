@@ -8,7 +8,7 @@ from helpers.utils import get_video_properties, calculate_time, filter_invalid_k
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     """
-    Applies a circular blur to a region in a frame.
+    Applies a circular blur to a region in a frame with feathered edges for smoother transition.
 
     Parameters:
     - frame (np.array): The frame to apply the blur to.
@@ -17,20 +17,47 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     Returns:
     - np.array: The frame with the blurred region.
     """
+    # Make a copy of the frame to avoid modifying the original
+    result = frame.copy()
+    
+    # Calculate center and radius
     center = (int((x_min + x_max) // 2), int((y_min + y_max) // 2))
     radius = int(max((x_max - x_min) // 2, (y_max - y_min) // 2))
-
+    
+    # Use slightly larger radius for the blur area
     radius = radius * 2
-
+    
+    # Create a mask for the blur region
     mask = np.zeros(frame.shape[:2], dtype="uint8")
-
     cv2.circle(mask, center, radius, 255, -1)
-
-    blurred_frame = cv2.GaussianBlur(frame, (99, 99), 30)
-
-    np.copyto(frame, blurred_frame, where=mask[:, :, None] == 255)
-
-    return frame
+    
+    # Create a feathered edge mask for smooth transition
+    feather_size = min(30, radius // 4)  # Feather size relative to radius
+    if feather_size > 0:
+        mask_feathered = cv2.GaussianBlur(mask.astype(np.float32), 
+                                         (feather_size*2+1, feather_size*2+1), 
+                                         feather_size)
+        mask_feathered = (mask_feathered * 255).astype(np.uint8)
+    else:
+        mask_feathered = mask
+    
+    # Apply stronger blur for better de-identification
+    # Use kernel size proportional to the radius for more consistent blurring
+    kernel_size = max(99, min(199, 2 * radius + 1))
+    # Make kernel size odd if it's even
+    kernel_size = kernel_size + 1 if kernel_size % 2 == 0 else kernel_size
+    
+    # Apply stronger blur to completely obscure features
+    blurred = cv2.GaussianBlur(frame, (kernel_size, kernel_size), kernel_size/3)
+    
+    # Create normalized alpha mask (0.0 to 1.0) for blending
+    alpha = mask_feathered.astype(float) / 255.0
+    
+    # Apply alpha blending for each channel
+    for c in range(3):  # RGB channels
+        result[:,:,c] = frame[:,:,c] * (1 - alpha) + blurred[:,:,c] * alpha
+        
+    return result
 
 
 def draw_bounding_box_and_keypoints(frame, keypoints, x_min, y_min, x_max, y_max):
@@ -104,15 +131,24 @@ def initialize_kalman_filter(fps):
     kf.measurementMatrix = np.array([[1, 0, 0, 0],
                                      [0, 1, 0, 0]], np.float32)
 
-    # Process Noise Covariance (Q)
-    kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
+    # Process Noise Covariance (Q) - Reduced to make prediction more stable
+    # The diagonal elements represent uncertainty in position and velocity
+    process_noise = np.array([
+        [dt**4/4, 0, dt**3/2, 0],
+        [0, dt**4/4, 0, dt**3/2],
+        [dt**3/2, 0, dt**2, 0],
+        [0, dt**3/2, 0, dt**2]
+    ], np.float32) * 0.01  # Reduced process noise factor
+    
+    kf.processNoiseCov = process_noise
 
-    # Measurement Noise Covariance (R)
-    kf.measurementNoiseCov = np.array([[1, 0],
-                                       [0, 1]], np.float32) * 1
+    # Measurement Noise Covariance (R) - Increased to trust measurements less
+    # This will make the filter less reactive to noisy measurements
+    kf.measurementNoiseCov = np.array([[10, 0],
+                                       [0, 10]], np.float32)
 
     # Error Covariance Matrix (P)
-    kf.errorCovPost = np.eye(4, dtype=np.float32)
+    kf.errorCovPost = np.eye(4, dtype=np.float32) * 10  # Initial uncertainty
 
     # Initial State (x)
     kf.statePost = np.zeros(4, np.float32)
@@ -142,6 +178,7 @@ def initialize_kalman_filter_for_person(person_id, kalman_filters, keypoints, fr
 def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width, frame_height, frame_number, fps):
     """
     Applies a Kalman filter to a set of keypoints and predicts the next state.
+    Uses confidence-weighted keypoint averaging and adaptive measurement noise.
     """
     # Early return if the Kalman filter doesn't exist and keypoints are not sufficient to initialize it.
     if person_id not in kalman_filters:
@@ -165,13 +202,50 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     # Update the Kalman filter if keypoints are available
     if keypoints and len(keypoints) > 0:
         keypoints = np.array(keypoints)
-        keypoints = filter_invalid_keypoints(keypoints)
-        if keypoints.shape[0] > 0:
-            measurement = np.mean(keypoints, axis=0)[:2]
+        valid_keypoints = filter_invalid_keypoints(keypoints)
+        
+        if valid_keypoints.shape[0] > 0:
+            # Get confidence values for valid keypoints
+            confidences = valid_keypoints[:, 2]
+            
+            # Normalize confidences to use as weights (if all confidences are 0, use equal weights)
+            if np.sum(confidences) > 0:
+                weights = confidences / np.sum(confidences)
+                # Weighted average of keypoints based on confidence
+                measurement = np.average(valid_keypoints[:, :2], axis=0, weights=weights)
+            else:
+                # Use simple average if no confidence information
+                measurement = np.mean(valid_keypoints[:, :2], axis=0)
+            
+            # Adjust measurement noise based on average confidence
+            # Lower confidence = higher measurement noise (trust measurements less)
+            avg_confidence = np.mean(confidences) if len(confidences) > 0 else 0
+            if avg_confidence > 0:
+                # Scale measurement noise inversely with confidence
+                # High confidence (near 1.0) = low noise (near 5)
+                # Low confidence (near 0.0) = high noise (near 50)
+                noise_scale = 5 + (1.0 - avg_confidence) * 45
+                kf.measurementNoiseCov = np.array([[noise_scale, 0], 
+                                                  [0, noise_scale]], np.float32)
+            
+            # Update filter with measurement
             kf.correct(measurement.astype(np.float32))
+            
+            # Use velocity damping for smoother trajectories
+            # Reduce velocity component if prediction jumped too far
+            current_velocity = kf.statePost[2:4]
+            velocity_magnitude = np.linalg.norm(current_velocity)
+            
+            # Apply velocity dampening if the velocity is too high
+            max_velocity = 20  # max pixels per frame
+            if velocity_magnitude > max_velocity:
+                damping_factor = max_velocity / velocity_magnitude
+                kf.statePost[2:4] *= damping_factor
 
-    # Extract predicted coordinates
-    estimated_x, estimated_y = int(predicted[0]), int(predicted[1])
+    # Extract predicted coordinates with bounds checking
+    estimated_x = max(0, min(frame_width - 1, int(kf.statePost[0])))
+    estimated_y = max(0, min(frame_height - 1, int(kf.statePost[1])))
+    
     return estimated_x, estimated_y, kalman_filters
 
 
@@ -290,6 +364,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
 def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=True):
     """
     Processes a frame and applies blur to faces.
+    Uses stable bounding box calculation to reduce jitter.
 
     Parameters:
     - frame (np.array): The frame to process.
@@ -306,8 +381,25 @@ def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=T
         return frame
 
     if draw_bbox or blur_faces:
+        # Use larger margin (80) for blurring to ensure full face coverage
         x_min, y_min, x_max, y_max = calculate_bounding_box(
-            np.array([[estimated_x, estimated_y]]), frame.shape, margin=50)
+            np.array([[estimated_x, estimated_y]]), frame.shape, margin=80)
+
+        # Add padding to ensure consistent box size between frames
+        # This helps reduce jitter in the blurring
+        width = x_max - x_min
+        height = y_max - y_min
+        
+        # Ensure the box is square for more stable visual effect
+        max_dim = max(width, height)
+        center_x = (x_min + x_max) // 2
+        center_y = (y_min + y_max) // 2
+        
+        # Recalculate box dimensions from center to ensure it's square
+        x_min = max(0, center_x - max_dim // 2)
+        y_min = max(0, center_y - max_dim // 2)
+        x_max = min(frame.shape[1], center_x + max_dim // 2)
+        y_max = min(frame.shape[0], center_y + max_dim // 2)
 
         if blur_faces:
             frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)

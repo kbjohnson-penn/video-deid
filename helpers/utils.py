@@ -133,6 +133,7 @@ def filter_invalid_keypoints(keypoints):
 def calculate_bounding_box(keypoints, frame_shape, margin=50):
     """
     Calculates the minimum and maximum coordinates of the bounding box for a set of keypoints.
+    Applies stabilization to prevent jitter between frames.
 
     Parameters:
     - keypoints (list): The keypoints to calculate the bounding box for.
@@ -143,15 +144,41 @@ def calculate_bounding_box(keypoints, frame_shape, margin=50):
     - tuple: The minimum and maximum coordinates of the bounding box.
     """
     keypoints = np.array(keypoints)
-    x_min, y_min = np.min(keypoints[:, :2], axis=0).astype(int) - margin
-    x_max, y_max = np.max(keypoints[:, :2], axis=0).astype(int) + margin
+    
+    # Handle empty keypoints array
+    if keypoints.size == 0 or keypoints.shape[0] == 0:
+        # Default to center of frame with reasonable size
+        center_x, center_y = frame_shape[1] // 2, frame_shape[0] // 2
+        half_width = min(100, frame_shape[1] // 4)
+        half_height = min(100, frame_shape[0] // 4)
+        
+        return (
+            max(0, center_x - half_width),
+            max(0, center_y - half_height),
+            min(frame_shape[1], center_x + half_width),
+            min(frame_shape[0], center_y + half_height)
+        )
+    
+    # Use first two columns (x,y) for coordinate calculation
+    xy_points = keypoints[:, :2] if keypoints.shape[1] >= 2 else keypoints
+    
+    # Calculate center point of keypoints
+    center_x, center_y = np.mean(xy_points, axis=0).astype(int)
+    
+    # Calculate the distance from center to farthest point
+    distances = np.sqrt(np.sum((xy_points - np.array([center_x, center_y]))**2, axis=1))
+    max_distance = int(np.max(distances)) if distances.size > 0 else margin
+    
+    # Use max distance plus margin for a more stable box size
+    box_size = max_distance + margin
+    
+    # Calculate box coordinates based on center and size
+    x_min = max(0, center_x - box_size)
+    y_min = max(0, center_y - box_size)
+    x_max = min(frame_shape[1], center_x + box_size)
+    y_max = min(frame_shape[0], center_y + box_size)
 
-    x_min = max(0, x_min)
-    y_min = max(0, y_min)
-    x_max = min(frame_shape[1], x_max)
-    y_max = min(frame_shape[0], y_max)
-
-    return x_min, y_min, x_max, y_max
+    return int(x_min), int(y_min), int(x_max), int(y_max)
 
 
 def interpolate_and_sort_df(df):
