@@ -1,14 +1,24 @@
+"""
+Command-line interface for the video-deid package
+"""
 import os
 import argparse
 import logging
 import tempfile
 import shutil
 from pathlib import Path
-from helpers.utils import create_run_directory_and_paths, setup_logging, load_dataframe_from_csv, interpolate_and_sort_df
-from helpers.video_blur import process_video
-from helpers.audio import combine_audio_video
-from helpers.complete_deid import blur_video, process_blurred_video
-from helpers.extract_keypoints import extract_keypoints_and_save
+
+from .utils import (
+    create_run_directory_and_paths,
+    setup_logging,
+    load_dataframe_from_csv,
+    interpolate_and_sort_df
+)
+from .audio import combine_audio_video
+from .blur import process_video
+from .deid import blur_video, process_blurred_video
+from .keypoints import extract_keypoints_and_save
+from .config import DEFAULT_YOLO_MODEL
 
 
 def parse_arguments():
@@ -135,9 +145,9 @@ def get_model_path(custom_path=None):
     if custom_path:
         return str(Path(custom_path))
     
-    # No custom path, use default model name
+    # No custom path, use default model name from config
     # YOLO will automatically download this if it doesn't exist
-    return "yolo11x-pose.pt"
+    return DEFAULT_YOLO_MODEL
 
 
 def cleanup_temp_files(temp_file_path):

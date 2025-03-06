@@ -1,21 +1,26 @@
+"""
+Complete video de-identification functionality
+"""
 import cv2
 import logging
 import shutil
 from pathlib import Path
-from helpers.utils import create_progress_bar
+
+from ..utils.progress import create_progress_bar
+from ..config import BLUR_KERNEL_SIZE
 
 
-def blur_entire_frame(frame):
+def blur_entire_frame(frame, kernel_size=(151, 151)):
     """
     Apply a Gaussian blur to the entire frame for privacy protection.
     
     Parameters:
     - frame: The input video frame to blur
+    - kernel_size: Size of the Gaussian blur kernel
     
     Returns:
     - blurred_frame: The completely blurred frame
     """
-    kernel_size = (151, 151)
     blurred_frame = cv2.GaussianBlur(frame, kernel_size, 0)
     return blurred_frame
 
@@ -187,7 +192,7 @@ def process_blurred_video(blurred_video_source, df, output_video_path, show_prog
             total_frames, "Applying keypoints to blurred video", show_progress)
 
         # Process each frame
-        for frame_number in range(total_frames):
+        for frame_number in range(1, total_frames + 1):  # Assuming frame numbers start at 1
             ret, frame = cap.read()
             if not ret:
                 break
