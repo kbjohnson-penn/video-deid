@@ -39,3 +39,28 @@ KEYPOINTS_DTYPE_SPEC = {
     'x_14': float, 'y_14': float, 'x_15': float, 'y_15': float,
     'x_16': float, 'y_16': float
 }
+
+SKELETON_CONNECTIONS = [
+    ((0, 1), (0, 255, 0)),  # green
+    ((0, 2), (0, 255, 0)),  # green
+    ((1, 3), (0, 255, 0)),  # green
+    ((2, 4), (0, 255, 0)),  # green
+    ((3, 5), (0, 0, 255)),  # blue
+    ((4, 6), (0, 0, 255)),  # blue
+    ((5, 6), (0, 0, 255)),  # blue
+    ((5, 7), (0, 0, 255)),  # blue
+    ((7, 9), (0, 0, 255)),  # blue
+    ((6, 8), (0, 0, 255)),  # blue
+    ((8, 10), (0, 0, 255)),  # blue
+    ((5, 11), (0, 165, 255)),  # orange
+    ((6, 12), (0, 165, 255)),  # orange
+    ((11, 12), (0, 165, 255)),  # orange
+    ((11, 13), (0, 165, 255)),  # orange
+    ((13, 15), (0, 165, 255)),  # orange
+    ((12, 14), (0, 165, 255)),  # orange
+    ((14, 16), (0, 165, 255))   # orange
+]
+
+KEYPOINT_COLOR = (0, 0, 255)  # red
+KEYPOINT_RADIUS = 3
+LINE_THICKNESS = 2

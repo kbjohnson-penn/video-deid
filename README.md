@@ -91,6 +91,57 @@ python -m video_deid.cli --operation_type deid --video <video_path> --keypoints_
 - `--log` - Enable logging
 - `--progress` - Show processing progress bar
 
+## Keypoints CSV Format
+
+The keypoints CSV file generated during the extraction phase contains detailed pose information for each person detected in each frame. This data is used during the de-identification process to maintain body pose visualization while blurring faces.
+
+### CSV Structure
+
+Each row in the CSV represents a single person in a specific frame with the following columns:
+
+1. `frame_number` - The frame number in the video (starting from 0)
+2. `person_id` - A unique identifier for each tracked person (or "No detections" if no person was found)
+3. `bbox_x1`, `bbox_y1`, `bbox_x2`, `bbox_y2` - Bounding box coordinates for the detected person
+
+Then, for each of the 17 keypoints (0-16), there are three columns:
+- `x_i` - X-coordinate of keypoint i
+- `y_i` - Y-coordinate of keypoint i
+- `c_i` - Confidence score for keypoint i (between 0 and 1)
+
+### Keypoint Mapping
+
+The 17 keypoints represent different body parts following the COCO keypoints format:
+
+| Index | Body Part       |
+|-------|----------------|
+| 0     | Nose           |
+| 1     | Left Eye       |
+| 2     | Right Eye      |
+| 3     | Left Ear       |
+| 4     | Right Ear      |
+| 5     | Left Shoulder  |
+| 6     | Right Shoulder |
+| 7     | Left Elbow     |
+| 8     | Right Elbow    |
+| 9     | Left Wrist     |
+| 10    | Right Wrist    |
+| 11    | Left Hip       |
+| 12    | Right Hip      |
+| 13    | Left Knee      |
+| 14    | Right Knee     |
+| 15    | Left Ankle     |
+| 16    | Right Ankle    |
+
+A keypoint with coordinates (0, 0) and low confidence indicates that the keypoint was not detected in that frame.
+
+### Using Keypoints Data
+
+During de-identification, the system uses:
+- Keypoints 0-4 (facial keypoints) to locate and blur faces
+- All keypoints to draw the skeletal visualization in complete de-identification mode
+
+The CSV data includes tracking information, allowing the system to consistently identify the same person across different frames, which improves the stability of blurring.
+
 ## Project Structure
 
 The project is organized into a clean package structure:

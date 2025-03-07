@@ -5,7 +5,8 @@ import logging
 import numpy as np
 import pandas as pd
 import cv2
-from helpers.utils import filter_invalid_keypoints
+from ..utils import filter_invalid_keypoints
+from ..config import FACIAL_KEYPOINTS_COUNT
 
 
 def initialize_kalman_filter(fps):
@@ -51,7 +52,7 @@ def initialize_kalman_filter(fps):
 def initialize_kalman_filter_for_person(person_id, kalman_filters, keypoints, frame_width, frame_height, fps):
     """
     Initializes the Kalman filter for a given person if they do not have an existing filter.
-    
+
     Parameters:
     - person_id (int): The identifier of the person.
     - kalman_filters (dict): Dictionary of Kalman filters.
@@ -59,7 +60,7 @@ def initialize_kalman_filter_for_person(person_id, kalman_filters, keypoints, fr
     - frame_width (int): The width of the frame.
     - frame_height (int): The height of the frame.
     - fps (float): The frame rate.
-    
+
     Returns:
     - dict: Updated dictionary of Kalman filters.
     """
@@ -83,7 +84,7 @@ def initialize_kalman_filter_for_person(person_id, kalman_filters, keypoints, fr
 def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width, frame_height, frame_number, fps):
     """
     Applies a Kalman filter to a set of keypoints and predicts the next state.
-    
+
     Parameters:
     - keypoints (list): The keypoints to filter.
     - kalman_filters (dict): Dictionary of Kalman filters.
@@ -92,7 +93,7 @@ def kalman_filter_and_predict(keypoints, kalman_filters, person_id, frame_width,
     - frame_height (int): The height of the frame.
     - frame_number (int): The frame number.
     - fps (float): The frame rate.
-    
+
     Returns:
     - tuple: (estimated_x, estimated_y, updated_kalman_filters)
     """
@@ -148,7 +149,7 @@ def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
 
     # Extract the facial keypoints from the first row
     keypoints = [[rows[f'x_{i}'].values[0], rows[f'y_{i}'].values[0],
-                  rows[f'c_{i}'].values[0]] for i in range(5)]
+                  rows[f'c_{i}'].values[0]] for i in range(FACIAL_KEYPOINTS_COUNT)]
 
     return keypoints
 
@@ -156,7 +157,7 @@ def get_missing_keypoints_from_dataframe(df, frame_number, person_id):
 def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_width, frame_height, fps, total_frames):
     """
     Generates predictions for face positions using Kalman filtering.
-    
+
     Parameters:
     - keypoints_df (pd.DataFrame): Dataframe containing keypoints.
     - interpolated_keypoints_df (pd.DataFrame): Dataframe containing interpolated keypoints.
@@ -164,7 +165,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
     - frame_height (int): The height of the frame.
     - fps (float): The frame rate.
     - total_frames (int): The total number of frames in the video.
-    
+
     Returns:
     - pd.DataFrame: Dataframe containing Kalman filter predictions.
     """
@@ -184,7 +185,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
         if not person_keypoints.empty:
             first_valid_row = person_keypoints.iloc[0]
             keypoints = [[first_valid_row[f'x_{i}'], first_valid_row[f'y_{i}'],
-                         first_valid_row[f'c_{i}']] for i in range(5)]
+                         first_valid_row[f'c_{i}']] for i in range(FACIAL_KEYPOINTS_COUNT)]
             kalman_filters = initialize_kalman_filter_for_person(
                 person_id, kalman_filters, keypoints, frame_width, frame_height, fps)
 
@@ -204,7 +205,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
 
             # Extract keypoints efficiently
             keypoints = np.array(
-                [[row[f'x_{i}'], row[f'y_{i}'], row[f'c_{i}']] for i in range(5)])
+                [[row[f'x_{i}'], row[f'y_{i}'], row[f'c_{i}']] for i in range(FACIAL_KEYPOINTS_COUNT)])
 
             # Check if keypoints are valid using vectorized operations
             if np.all(keypoints[:, :2] == [0, 0]) and frame_number in interpolated_dict:
@@ -213,7 +214,7 @@ def generate_kalman_predictions(keypoints_df, interpolated_keypoints_df, frame_w
                 if not interp_row.empty:
                     keypoints = np.array([[interp_row[f'x_{i}'].values[0],
                                            interp_row[f'y_{i}'].values[0],
-                                           interp_row[f'c_{i}'].values[0]] for i in range(5)])
+                                           interp_row[f'c_{i}'].values[0]] for i in range(FACIAL_KEYPOINTS_COUNT)])
 
             # Predict position
             estimated_x, estimated_y, kalman_filters = kalman_filter_and_predict(

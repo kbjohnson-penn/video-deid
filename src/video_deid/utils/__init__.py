@@ -17,6 +17,5 @@ from .keypoint_utils import (
     load_dataframe_from_csv
 )
 
-from .audio_utils import combine_audio_video
 from .time_utils import calculate_time
 from .progress import create_progress_bar

@@ -6,6 +6,7 @@ import logging
 import cv2
 import time
 from pathlib import Path
+from ..config import DEFAULT_RUNS_DIR
 
 
 def create_run_directory_and_paths(video_path):
@@ -22,12 +23,11 @@ def create_run_directory_and_paths(video_path):
     video_path = Path(video_path)
     video_file_name = video_path.stem
     time_stamp = int(time.time())
-    
+
     # Ensure the runs directory exists
-    runs_dir = Path("runs")
-    runs_dir.mkdir(exist_ok=True)
-    
-    current_run = runs_dir / f"{video_file_name}_{time_stamp}"
+    DEFAULT_RUNS_DIR.mkdir(exist_ok=True)
+
+    current_run = DEFAULT_RUNS_DIR / f"{video_file_name}_{time_stamp}"
     current_run.mkdir(exist_ok=True)
     logging.info(f"Created current run directory: {current_run}")
 

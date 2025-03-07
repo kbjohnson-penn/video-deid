@@ -13,7 +13,7 @@ __version__ = "1.0.0"
 __all__ = [
     'process_video',
     'extract_keypoints_and_save',
-    'blur_video', 
+    'blur_video',
     'process_blurred_video',
     'combine_audio_video'
 ]

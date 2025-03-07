@@ -4,7 +4,7 @@ Core functionality for video de-identification
 import logging
 import cv2
 
-from helpers.utils import get_video_properties
+from ..utils import get_video_properties
 from .tracking import generate_kalman_predictions
 from .processing import initialize_video_writer, process_frame_loop
 
@@ -26,10 +26,11 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
     """
     cap = None
     out = None
-    
+
     try:
         # Step 1: Get video properties
-        frame_width, frame_height, fps, total_frames = get_video_properties(video_path)
+        frame_width, frame_height, fps, total_frames = get_video_properties(
+            video_path)
         logging.info('Getting video properties.')
 
         # Step 2: Generate Kalman predictions
@@ -43,7 +44,8 @@ def process_video(video_path, keypoints_df, interpolated_keypoints_df, kalman_fi
         if not cap.isOpened():
             raise IOError(f"Cannot open video file: {video_path}")
 
-        out = initialize_video_writer(video_path, output_path, fps, frame_width, frame_height)
+        out = initialize_video_writer(
+            video_path, output_path, fps, frame_width, frame_height)
         logging.info('Starting video processing...')
 
         # Step 4: Process frames

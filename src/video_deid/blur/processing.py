@@ -6,8 +6,9 @@ import cv2
 import pandas as pd
 import numpy as np
 
-from helpers.utils import calculate_bounding_box, create_progress_bar
+from ..utils import calculate_bounding_box, create_progress_bar
 from .techniques import apply_circular_blur, apply_full_frame_blur
+from ..config import DEFAULT_FOURCC, LOG_FREQUENCY, FACE_MARGIN
 
 
 def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=True):
@@ -28,26 +29,28 @@ def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=T
     if estimated_x is None or estimated_y is None:
         logging.warning(f"Invalid keypoints, applying full-frame blur")
         return apply_full_frame_blur(frame)
-    
+
     # Check if keypoints are within reasonable bounds (outside frame or at extreme edges)
     height, width = frame.shape[:2]
     border_margin = 10
-    
-    if (estimated_x < border_margin or estimated_x > width - border_margin or 
-        estimated_y < border_margin or estimated_y > height - border_margin):
-        logging.warning(f"Keypoints out of bounds: ({estimated_x}, {estimated_y}), applying full-frame blur")
+
+    if (estimated_x < border_margin or estimated_x > width - border_margin or
+            estimated_y < border_margin or estimated_y > height - border_margin):
+        logging.warning(
+            f"Keypoints out of bounds: ({estimated_x}, {estimated_y}), applying full-frame blur")
         return apply_full_frame_blur(frame)
 
     if draw_bbox or blur_faces:
         try:
             x_min, y_min, x_max, y_max = calculate_bounding_box(
-                np.array([[estimated_x, estimated_y]]), frame.shape, margin=50)
-            
+                np.array([[estimated_x, estimated_y]]), frame.shape, margin=FACE_MARGIN)
+
             # Validate that we have a reasonable bounding box
             if (x_max - x_min) < 10 or (y_max - y_min) < 10:
-                logging.warning(f"Bounding box too small: width={x_max-x_min}, height={y_max-y_min}, applying full-frame blur")
+                logging.warning(
+                    f"Bounding box too small: width={x_max-x_min}, height={y_max-y_min}, applying full-frame blur")
                 return apply_full_frame_blur(frame)
-                
+
             if blur_faces:
                 frame = apply_circular_blur(frame, x_min, y_min, x_max, y_max)
             if draw_bbox:
@@ -76,10 +79,10 @@ def initialize_video_writer(video_path, output_path, fps, frame_width=None, fram
     - cv2.VideoWriter: Video writer object.
     """
     if frame_width is None or frame_height is None:
-        from helpers.utils import get_video_properties
+        from ..utils import get_video_properties
         frame_width, frame_height, _, _ = get_video_properties(video_path)
-        
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+    fourcc = cv2.VideoWriter_fourcc(*DEFAULT_FOURCC)
     return cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
 
@@ -104,12 +107,14 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
         valid_predictions = []
         for _, row in frame_group.iterrows():
             if pd.notna(row['estimated_x']) and pd.notna(row['estimated_y']):
-                valid_predictions.append((row['person_id'], row['estimated_x'], row['estimated_y']))
+                valid_predictions.append(
+                    (row['person_id'], row['estimated_x'], row['estimated_y']))
         if valid_predictions:
             predictions_by_frame[frame_num] = valid_predictions
-    
+
     frame_number = 1
-    progress_bar = create_progress_bar(total_frames, "Processing and blurring video", show_progress)
+    progress_bar = create_progress_bar(
+        total_frames, "Processing and blurring video", show_progress)
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -121,29 +126,32 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
 
         # Always create a copy to be safe
         frame_copy = frame.copy()
-        
+
         if predictions:
             # Process all faces in the frame
             for person_id, est_x, est_y in predictions:
                 try:
                     # Reduce logging to improve performance
-                    if frame_number % 100 == 0:
-                        logging.info(f"Processing frame {frame_number} for person_id {person_id}")
-                    
-                    # Apply blur directly 
+                    if frame_number % LOG_FREQUENCY == 0:
+                        logging.info(
+                            f"Processing frame {frame_number} for person_id {person_id}")
+
+                    # Apply blur directly
                     frame_copy = process_frame(
                         frame_copy, est_x, est_y, blur_faces=True, draw_bbox=False
                     )
                 except Exception as e:
-                    logging.error(f"Error processing frame {frame_number}: {e}")
+                    logging.error(
+                        f"Error processing frame {frame_number}: {e}")
                     # Make sure this frame still gets blurred
                     frame_copy = apply_full_frame_blur(frame_copy)
         else:
             # No valid keypoints found for this frame, apply blur to entire frame
-            if frame_number % 100 == 0:
-                logging.info(f"No valid keypoints for frame {frame_number}, applying full-frame blur")
+            if frame_number % LOG_FREQUENCY == 0:
+                logging.info(
+                    f"No valid keypoints for frame {frame_number}, applying full-frame blur")
             frame_copy = apply_full_frame_blur(frame_copy)
-        
+
         # Make sure we always write a frame
         out.write(frame_copy)
 
