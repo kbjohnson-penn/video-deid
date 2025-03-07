@@ -9,7 +9,6 @@ DEFAULT_RUNS_DIR = Path("runs")
 
 # Model settings
 DEFAULT_YOLO_MODEL = "yolo11x-pose.pt"
-DEFAULT_CONFIDENCE_THRESHOLD = 0.25
 
 # Blur settings
 BLUR_KERNEL_SIZE = 25

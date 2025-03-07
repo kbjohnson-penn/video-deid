@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Video De-identification Tool is designed to provide a comprehensive solution for de-identifying faces in videos through blurring. It uses computer vision techniques to detect facial keypoints and applies blur effects to protect privacy.
+The Video De-identification Tool is designed to provide a comprehensive solution for de-identifying faces in videos through blurring techniques. It uses computer vision and machine learning to detect facial keypoints and applies various blur effects to protect privacy while maintaining the contextual information of body movements and audio.
 
-## Architecture
+## System Architecture
 
 The codebase follows a modular design with clear separation of concerns:
 
@@ -21,7 +21,7 @@ video-deid/
 │       │   ├── techniques.py # Blur implementations
 │       │   ├── tracking.py # Kalman tracking
 │       │   └── processing.py # Frame processing
-│       ├── keypoints/      # Keypoint extraction 
+│       ├── keypoints/      # Keypoint extraction
 │       │   ├── __init__.py
 │       │   └── extraction.py # Keypoint extraction with YOLO
 │       ├── deid/           # De-identification functionality
@@ -34,61 +34,98 @@ video-deid/
 │       │   ├── time_utils.py  # Time-related utilities
 │       │   └── progress.py    # Progress reporting
 │       └── audio.py        # Audio processing
-├── scripts/                # Shell scripts for batch processing
-├── data/                   # Sample data
+├── build/                  # Build artifacts
+├── runs/                   # Output directory for runs
 ├── setup.py                # Package installation
+├── pyproject.toml          # Modern Python packaging
+├── requirements.txt        # Package dependencies
 └── README.md               # Project documentation
 ```
 
 ## Main Components
 
-1. **CLI Module** (`cli.py`): Handles command-line arguments and coordinates the de-identification workflow.
+1. **CLI Module** (`cli.py`):
+
+   - Parses command-line arguments
+   - Orchestrates the workflow between extraction and de-identification
+   - Handles logging and progress reporting
+   - Manages file paths and temporary files
 
 2. **Blur Package** (`blur/`): Contains functionality for blurring faces in videos:
-   - `core.py`: Coordinates the blur process
-   - `techniques.py`: Implements different blur techniques
-   - `tracking.py`: Implements Kalman filter tracking for faces
-   - `processing.py`: Handles frame-by-frame processing
 
-3. **Keypoints Package** (`keypoints/`): Handles keypoint extraction:
-   - `extraction.py`: Extracts keypoints using YOLO models
+   - `core.py`: Coordinates the blur process and manages the pipeline
+   - `techniques.py`: Implements different blur techniques (Gaussian, median, pixelation)
+   - `tracking.py`: Implements Kalman filter tracking for stable face detection across frames
+   - `processing.py`: Processes frames in batches for optimal performance
 
-4. **De-identification Package** (`deid/`): Contains de-identification functionality:
-   - `complete.py`: Implements complete video de-identification with blurring and keypoint visualization
+3. **Keypoints Package** (`keypoints/`): Handles pose detection and keypoint extraction:
+
+   - `extraction.py`: Extracts body and facial keypoints using YOLO pose models
+
+4. **De-identification Package** (`deid/`): Contains complete de-identification functionality:
+
+   - `complete.py`: Implements full video de-identification with blurring and skeleton visualization
 
 5. **Utils Package** (`utils/`): Contains utility functions:
-   - `file_utils.py`: File and directory operations
-   - `keypoint_utils.py`: Keypoint processing and manipulation
-   - `time_utils.py`: Time-related utilities
-   - `progress.py`: Progress reporting
 
-6. **Audio Module** (`audio.py`): Handles audio extraction and combination.
+   - `file_utils.py`: File and directory operations, temporary file management
+   - `keypoint_utils.py`: Keypoint interpolation, filtering, and manipulation
+   - `time_utils.py`: Timing and performance measurement utilities
+   - `progress.py`: Progress reporting with tqdm integration
 
-7. **Configuration Module** (`config.py`): Centralizes configuration parameters.
+6. **Audio Module** (`audio.py`):
+
+   - Extracts audio from videos
+   - Combines processed video with original audio
+   - Ensures audio quality is preserved during de-identification
+
+7. **Configuration Module** (`config.py`):
+   - Centralizes configuration parameters
+   - Defines constants for blur intensities, batch sizes, and tracking parameters
+   - Enables customization without code changes
 
 ## Data Flow
 
-1. User input is processed via the CLI module.
-2. The CLI module coordinates the workflow based on the operation type:
-   - For keypoint extraction, the `extract_keypoints_and_save` function is called.
-   - For de-identification, the process involves loading keypoints, interpolation, and video processing.
-3. The processed video is saved to the output path.
+1. **Keypoint Extraction Phase**:
 
-## Design Decisions
+   - Input video is processed frame by frame
+   - YOLO model detects people and extracts keypoints
+   - Keypoints are saved to a CSV file with tracking information
 
-- **Modularity**: The codebase is organized into modules with clear responsibilities, making it easier to maintain and extend.
-- **Clean Package Structure**: Functionality is organized into logical subpackages (blur, keypoints, deid, utils).
-- **No Backward Compatibility**: Backward compatibility has been removed to eliminate redundant code.
-- **Centralized Configuration**: Configuration parameters are centralized in `config.py`.
-- **Proper Error Handling**: Comprehensive error handling is implemented throughout the codebase.
-- **Progress Reporting**: Progress reporting is available for long-running operations.
-- **Flexible Blur Techniques**: The blur techniques are modular and can be extended with new methods.
+2. **Keypoint Processing**:
+
+   - Keypoints are loaded from CSV
+   - Missing keypoints are interpolated for continuity
+   - Optional Kalman filtering for smoothing motion
+
+3. **De-identification Phase**:
+   - Input video is processed in batches
+   - For face blur: Only facial areas are blurred based on keypoints
+   - For complete de-id: Entire frame is blurred and skeleton is overlaid
+   - Processed frames are combined with original audio
+   - Final video is saved to output path
+
+## Technical Design Decisions
+
+- **Batch Processing**: Frames are processed in configurable batches for better memory usage and performance
+- **Modular Architecture**: Components are encapsulated with clear interfaces for maintainability
+- **Kalman Filtering**: Advanced tracking to ensure stable blur regions across frames
+- **Centralized Configuration**: All parameters are defined in config.py for easy tuning
+- **Progress Reporting**: Real-time feedback for long-running operations
+- **Error Handling**: Comprehensive error handling with informative messages
+
+## Performance Considerations
+
+- **Batch Processing**: Optimizes memory usage by processing frames in batches
+- **Configurable Parameters**: Blur intensity and kernel size can be tuned for performance
+- **Memory Management**: Temporary files used for large videos to prevent memory issues
+- **Progress Reporting**: Gives feedback during long-running operations
 
 ## Future Improvements
 
-- Add unit tests for core functionality
-- Implement more blur techniques
-- Add support for parallel processing of video frames
-- Create a web interface for non-technical users
-- Improve documentation and examples
-- Set up CI/CD pipelines for automated testing and deployment
+- **GPU Acceleration**: Add CUDA support for faster processing
+- **Parallel Processing**: Implement multiprocessing for frame-level parallelism
+- **Additional Blur Techniques**: Implement more sophisticated anonymization methods
+- **Test Coverage**: Add comprehensive unit and integration tests
+- **CI/CD Pipeline**: Set up automated testing and deployment
+- **Video Streaming**: Support for real-time processing of video streams

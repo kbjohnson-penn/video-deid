@@ -4,6 +4,8 @@ Blur techniques for facial de-identification
 import cv2
 import numpy as np
 
+from ..config import BLUR_KERNEL_SIZE, BLUR_SIGMA
+
 
 def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     """
@@ -44,13 +46,13 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
         -1
     )
 
-    # Use smaller kernel size for efficiency
-    kernel_size = min(75, max(21, radius // 2))
+    # Use kernel size from config, adjusted for face size
+    kernel_size = min(BLUR_KERNEL_SIZE * 3, max(BLUR_KERNEL_SIZE, radius // 2))
     if kernel_size % 2 == 0:
         kernel_size += 1  # Must be odd
 
-    # Blur only the ROI
-    blurred_roi = cv2.GaussianBlur(roi, (kernel_size, kernel_size), 15)
+    # Blur only the ROI, using sigma from config
+    blurred_roi = cv2.GaussianBlur(roi, (kernel_size, kernel_size), BLUR_SIGMA)
 
     # Apply the blur only to masked area
     np.copyto(roi, blurred_roi, where=roi_mask[:, :, None] == 255)
@@ -61,20 +63,30 @@ def apply_circular_blur(frame, x_min, y_min, x_max, y_max):
     return frame
 
 
-def apply_full_frame_blur(frame, kernel_size=25):
+def apply_full_frame_blur(frame, kernel_size=None, sigma=None):
     """
     Applies a light Gaussian blur to the entire frame for privacy protection.
 
     Parameters:
     - frame (np.array): The frame to blur
-    - kernel_size (int): Size of the Gaussian kernel
+    - kernel_size (int, optional): Size of the Gaussian kernel (uses config if None)
+    - sigma (float, optional): Sigma value for Gaussian blur (uses config if None)
 
     Returns:
     - np.array: The blurred frame
     """
+    # Use config values if not specified
+    if kernel_size is None:
+        kernel_size = BLUR_KERNEL_SIZE
+
+    if sigma is None:
+        sigma = BLUR_SIGMA
+
+    # Make sure kernel size is odd
     if kernel_size % 2 == 0:
         kernel_size += 1  # Must be odd
-    return cv2.GaussianBlur(frame, (kernel_size, kernel_size), 10)
+
+    return cv2.GaussianBlur(frame, (kernel_size, kernel_size), sigma)
 
 
 def draw_bounding_box_and_keypoints(frame, keypoints, x_min, y_min, x_max, y_max):
