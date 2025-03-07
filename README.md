@@ -2,9 +2,17 @@
 
 This project is a Python package designed to process videos by blurring detected faces, thereby anonymizing individuals in the footage. It leverages body and facial keypoints to locate people within each video frame and subsequently applies a blur effect. The application offers features such as extracting keypoints to CSV, interpolation for missing frames, and showing progress during processing.
 
-This tool is particularly beneficial for those seeking to maintain privacy in video data, as it ensures the protection of individual identities.
+This tool is particularly beneficial for those seeking to maintain privacy in video data, as it ensures the protection of individual identities while preserving body movements and audio.
 
 ## Installation
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Git
+- OpenCV dependencies (on Linux you may need to install `libsm6`, `libxext6`, and `libxrender-dev`)
+
+### Standard Installation
 
 First, clone the repository:
 
@@ -38,18 +46,28 @@ On Unix or MacOS:
 source env/bin/activate
 ```
 
-Finally, install the project dependencies:
+Install the project dependencies:
 
 ```bash
 pip install -r requirements.txt
 pip install -e .  # Install in development mode
 ```
 
-You'll also need to download the YOLO pose detection model. Specify the model path with the `--model` argument or allow the system to use the default model.
+### Using pip
+
+Alternatively, you can install directly from GitHub:
+
+```bash
+pip install git+https://github.com/kbjohnson-penn/video-deid.git
+```
+
+### Model Setup
+
+The package will automatically download the YOLO pose detection model on first run, or you can specify a custom model path with the `--model` argument.
 
 ## Usage
 
-The package has two main operation modes:
+The package has two main operation modes that can be used as part of a two-step process:
 
 ### 1. Extract Keypoints
 
@@ -59,13 +77,15 @@ First, extract keypoints from a video:
 python -m video_deid.cli --operation_type extract --video <video_path> --keypoints_csv <output_csv_path> [--model <model_path>] [--log] [--progress]
 ```
 
+This will generate a CSV file containing the keypoints data for each person detected in the video.
+
 ### 2. De-identify Videos
 
 After extracting keypoints, you can de-identify the video in two ways:
 
 #### Face Blur Only
 
-Blur only the faces in the video:
+Blur only the faces in the video while preserving the rest of the video content:
 
 ```bash
 python -m video_deid.cli --operation_type deid --video <video_path> --keypoints_csv <keypoints_csv> --output <output_path> [--model <model_path>] [--log] [--progress]
@@ -73,10 +93,32 @@ python -m video_deid.cli --operation_type deid --video <video_path> --keypoints_
 
 #### Complete De-identification
 
-Completely blur the entire video and overlay skeleton keypoints:
+Completely blur the entire video and overlay skeleton keypoints, showing only body movements without revealing identities:
 
 ```bash
 python -m video_deid.cli --operation_type deid --video <video_path> --keypoints_csv <keypoints_csv> --output <output_path> --complete_deid [--log] [--progress]
+```
+
+### Batch Processing
+
+For processing multiple videos, create a script using the CLI interface:
+
+```bash
+#!/bin/bash
+videos_dir="/path/to/videos"
+output_dir="/path/to/output"
+
+for video in "$videos_dir"/*.mp4; do
+  filename=$(basename "$video")
+  keypoints_csv="$output_dir/${filename%.mp4}_keypoints.csv"
+  output_video="$output_dir/${filename%.mp4}_deid.mp4"
+  
+  # Extract keypoints
+  python -m video_deid.cli --operation_type extract --video "$video" --keypoints_csv "$keypoints_csv" --progress
+  
+  # De-identify video
+  python -m video_deid.cli --operation_type deid --video "$video" --keypoints_csv "$keypoints_csv" --output "$output_video" --progress
+done
 ```
 
 ### Parameters
