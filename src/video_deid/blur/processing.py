@@ -8,7 +8,7 @@ import numpy as np
 
 from ..utils import calculate_bounding_box, create_progress_bar
 from .techniques import apply_circular_blur, apply_full_frame_blur
-from ..config import DEFAULT_FOURCC, LOG_FREQUENCY, FACE_MARGIN
+from ..config import DEFAULT_FOURCC, LOG_FREQUENCY, FACE_MARGIN, BATCH_SIZE
 
 
 def process_frame(frame, estimated_x, estimated_y, blur_faces=False, draw_bbox=True):
@@ -90,6 +90,7 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
     """
     Processes frames in a video and applies Gaussian blur to faces.
     If no valid predictions are found, applies a light blur to the entire frame.
+    Uses batch processing for improved performance.
 
     Parameters:
     - cap (cv2.VideoCapture): Video capture object.
@@ -116,48 +117,79 @@ def process_frame_loop(cap, predicted_df, out, show_progress, total_frames):
     progress_bar = create_progress_bar(
         total_frames, "Processing and blurring video", show_progress)
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
+    # Process in batches for better performance
+    while cap.isOpened() and frame_number <= total_frames:
+        # Read a batch of frames
+        frames_batch = []
+        frames_data = []
+
+        # Limit batch size by remaining frames
+        current_batch_size = min(BATCH_SIZE, total_frames - frame_number + 1)
+
+        for i in range(current_batch_size):
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Get predictions for current frame
+            current_frame_num = frame_number + i
+            predictions = predictions_by_frame.get(current_frame_num, [])
+
+            frames_batch.append(frame)
+            frames_data.append((current_frame_num, predictions))
+
+        if not frames_batch:
             break
 
-        # Get predictions for current frame from dictionary (fast lookup)
-        predictions = predictions_by_frame.get(frame_number, [])
+        # Process each frame in the batch
+        processed_frames = []
 
-        # Always create a copy to be safe
-        frame_copy = frame.copy()
+        for i, (frame, (current_frame_num, predictions)) in enumerate(zip(frames_batch, frames_data)):
+            # Always create a copy to be safe
+            frame_copy = frame.copy()
 
-        if predictions:
-            # Process all faces in the frame
-            for person_id, est_x, est_y in predictions:
-                try:
-                    # Reduce logging to improve performance
-                    if frame_number % LOG_FREQUENCY == 0:
-                        logging.info(
-                            f"Processing frame {frame_number} for person_id {person_id}")
+            if predictions:
+                # Process all faces in the frame
+                for person_id, est_x, est_y in predictions:
+                    try:
+                        # Reduce logging to improve performance
+                        if current_frame_num % LOG_FREQUENCY == 0:
+                            logging.info(
+                                f"Processing frame {current_frame_num} for person_id {person_id}")
 
-                    # Apply blur directly
-                    frame_copy = process_frame(
-                        frame_copy, est_x, est_y, blur_faces=True, draw_bbox=False
-                    )
-                except Exception as e:
-                    logging.error(
-                        f"Error processing frame {frame_number}: {e}")
-                    # Make sure this frame still gets blurred
-                    frame_copy = apply_full_frame_blur(frame_copy)
-        else:
-            # No valid keypoints found for this frame, apply blur to entire frame
-            if frame_number % LOG_FREQUENCY == 0:
-                logging.info(
-                    f"No valid keypoints for frame {frame_number}, applying full-frame blur")
-            frame_copy = apply_full_frame_blur(frame_copy)
+                        # Apply blur directly
+                        frame_copy = process_frame(
+                            frame_copy, est_x, est_y, blur_faces=True, draw_bbox=False
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"Error processing frame {current_frame_num}: {e}")
+                        # Make sure this frame still gets blurred
+                        frame_copy = apply_full_frame_blur(frame_copy)
+            else:
+                # No valid keypoints found for this frame, apply blur to entire frame
+                if current_frame_num % LOG_FREQUENCY == 0:
+                    logging.info(
+                        f"No valid keypoints for frame {current_frame_num}, applying full-frame blur")
+                frame_copy = apply_full_frame_blur(frame_copy)
 
-        # Make sure we always write a frame
-        out.write(frame_copy)
+            processed_frames.append(frame_copy)
 
-        frame_number += 1
-        if show_progress:
-            progress_bar.update(1)
+        # Write the processed frames to output
+        for processed_frame in processed_frames:
+            out.write(processed_frame)
+
+            if show_progress:
+                progress_bar.update(1)
+
+        # Log batch progress
+        batch_size = len(processed_frames)
+        if (frame_number + batch_size - 1) % LOG_FREQUENCY < batch_size:
+            logging.info(
+                f"Processed batch ending with frame {frame_number + batch_size - 1}/{total_frames}")
+
+        # Update frame counter
+        frame_number += batch_size
 
     if show_progress:
         progress_bar.close()
