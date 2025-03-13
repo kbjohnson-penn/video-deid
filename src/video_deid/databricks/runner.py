@@ -25,7 +25,7 @@ def run_video_deid_extraction(spark, dbutils, model_path, video_path, output_pat
                         format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Import our function
-    from video_deid.databricks.extract import extract_keypoints_in_databricks
+    from .extract import extract_keypoints_in_databricks
 
     # Run the extraction
     extract_keypoints_in_databricks(
@@ -76,8 +76,8 @@ def run_video_deid_blur(spark, dbutils, video_path, keypoints_path, output_path,
 
         # Import necessary functions
         if complete_deid:
-            from video_deid.deid import blur_video, process_blurred_video
-            from video_deid.audio import combine_audio_video
+            from ..deid import blur_video, process_blurred_video
+            from ..audio import combine_audio_video
 
             # Process with complete de-identification
             temp_blur = os.path.join(temp_dir, "blurred.mp4")
@@ -86,8 +86,8 @@ def run_video_deid_blur(spark, dbutils, video_path, keypoints_path, output_path,
                                   local_output, show_progress=False)
 
         else:
-            from video_deid.utils import interpolate_and_sort_df
-            from video_deid.blur import process_video
+            from ..utils import interpolate_and_sort_df
+            from ..blur import process_video
 
             # Process with face blur only
             interpolated_df = interpolate_and_sort_df(keypoints_df)
