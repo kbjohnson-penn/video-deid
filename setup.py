@@ -12,7 +12,7 @@ with open("README.md", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
-    name="video-deid",
+    name="video_deid",  # Use underscore instead of hyphen
     version="1.0.0",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
