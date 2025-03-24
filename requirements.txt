@@ -3,3 +3,4 @@ pandas>=2.0.0
 opencv-python>=4.8.0
 tqdm>=2.0.0
 ultralytics>=8.0.0
+pyspark>=3.5.0
