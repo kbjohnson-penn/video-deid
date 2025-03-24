@@ -38,12 +38,11 @@ keywords = [
   "databricks",
 ]
 dependencies = [
-  "numpy>=2.2.0",
-  "pandas>=2.2.0",
-  "opencv-python>=4.11.0",
-  "tqdm>=4.67.0",
-  "ultralytics>=8.3.0",
-  "pyspark>=3.5.0",
+  "pandas>=1.5.0,<2.0.0", # Lower version that works with numpy<2
+  "opencv-python>=4.8.0",
+  "tqdm>=4.66.0",
+  "ultralytics>=8.0.0",
+  "pyspark>=3.4.0",
 ]
 
 [project.urls]
