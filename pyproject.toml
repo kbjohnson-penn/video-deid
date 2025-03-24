@@ -2,6 +2,10 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["video_deid", "video_deid.blur", "video_deid.deid", "video_deid.keypoints", "video_deid.utils", "video_deid.databricks"]
+
 [project]
 name = "video_deid"
 version = "1.0.0"
@@ -38,7 +42,8 @@ keywords = [
   "databricks",
 ]
 dependencies = [
-  "pandas>=1.5.0,<2.0.0", # Lower version that works with numpy<2
+  "numpy>=1.26.0,<2.0.0",  # Compatible with Databricks libraries
+  "pandas>=1.5.0,<2.0.0",  # Compatible with Databricks and numpy<2
   "opencv-python>=4.8.0",
   "tqdm>=4.66.0",
   "ultralytics>=8.0.0",
@@ -64,6 +69,10 @@ dev = [
   "mypy>=1.0.0",
   "mkdocs>=1.4.0",
   "mkdocs-material>=9.0.0",
+]
+databricks = [
+  "numpy>=1.26.0,<2.0.0",  # Compatible with TensorFlow in Databricks
+  "pandas>=1.5.0,<2.0.0",   # Compatible with Databricks
 ]
 
 [tool.black]
