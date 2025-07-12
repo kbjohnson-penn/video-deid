@@ -44,9 +44,14 @@ def extract_audio(video_path):
         # Extract audio using ffmpeg
         logging.info(f"Extracting audio from {video_path} to {temp_audio_path}")
         
+        # Validate video path before subprocess call
+        resolved_video = Path(video_path).resolve()
+        if not resolved_video.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+        
         # Use a more compatible and safer extraction method
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(video_path), "-vn", "-acodec", "libmp3lame", 
+            ["ffmpeg", "-y", "-i", str(resolved_video), "-vn", "-acodec", "libmp3lame", 
              "-q:a", "4", temp_audio_path],
             check=True,
             stdout=subprocess.PIPE,
@@ -103,12 +108,20 @@ def combine_audio_video(original_video, processed_video, output_path):
         temp_audio_path = extract_audio(original_video)
         
         if temp_audio_path:
+            # Validate paths before subprocess call
+            resolved_processed = Path(processed_video).resolve()
+            resolved_audio = Path(temp_audio_path).resolve()
+            if not resolved_processed.exists():
+                raise FileNotFoundError(f"Processed video not found: {processed_video}")
+            if not resolved_audio.exists():
+                raise FileNotFoundError(f"Audio file not found: {temp_audio_path}")
+            
             # Combine audio with processed video
             logging.info(f"Combining audio with processed video to {output_path}")
             
             # Use the -y flag to overwrite output if it exists
             result = subprocess.run(
-                ["ffmpeg", "-y", "-i", str(processed_video), "-i", temp_audio_path,
+                ["ffmpeg", "-y", "-i", str(resolved_processed), "-i", str(resolved_audio),
                  "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0",
                  "-shortest", str(output_path)],
                 check=False,  # Don't raise exception, we'll handle errors manually

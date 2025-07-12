@@ -6,8 +6,43 @@ import argparse
 import logging
 import tempfile
 import shutil
+import sys
 from pathlib import Path
 
+# Check dependencies early
+def check_dependencies():
+    """Check if required dependencies are available."""
+    missing = []
+    try:
+        import cv2
+        # Test that cv2 actually works
+        cv2.__version__
+    except (ImportError, AttributeError):
+        missing.append("opencv-python")
+    
+    try:
+        import numpy as np
+        # Test that numpy actually works
+        np.array([1, 2, 3])
+    except (ImportError, AttributeError):
+        missing.append("numpy")
+    
+    if missing:
+        print(f"Error: Missing required dependencies: {', '.join(missing)}")
+        print(f"\nCurrent Python: {sys.executable}")
+        print(f"Current environment: {sys.prefix}")
+        print("\nInstall with:")
+        print(f"  conda activate deid")
+        print(f"  conda install opencv numpy")
+        print("or:")
+        print(f"  pip install opencv-python numpy")
+        print("\nMake sure you're in the correct conda environment!")
+        sys.exit(1)
+
+# Check dependencies before importing video_deid modules
+check_dependencies()
+
+# Now safe to import video_deid modules
 from .utils import (
     create_run_directory_and_paths,
     setup_logging,
